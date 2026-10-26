@@ -1,0 +1,7 @@
+{
+  "appId": "iq.serviceoffice.mustamskat",
+  "appName": "Mustamskat - مستمسكات",
+  "webDir": "www",
+  "bundledWebRuntime": false,
+  "backgroundColor": "#F0F4EB"
+}

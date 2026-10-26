@@ -1,0 +1,17 @@
+{
+  "name": "mustamskat-android-apk",
+  "version": "3.0.0",
+  "description": "تطبيق مستمسكات للأندرويد (.APK) بالثيم #F0F4EB و #BDA383",
+  "scripts": {
+    "init:android": "npx cap add android",
+    "sync:android": "npx cap sync android",
+    "build:apk": "cd android && gradlew assembleDebug"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.0.0",
+    "@capacitor/core": "^6.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.0.0"
+  }
+}

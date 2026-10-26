@@ -1,0 +1,9 @@
+{
+  "name": "مستمسكات - Mustamskat A4 Scanner",
+  "short_name": "مستمسكات",
+  "start_url": "./index.html?platform=android",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F0F4EB",
+  "theme_color": "#BDA383"
+}

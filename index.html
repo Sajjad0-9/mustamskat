@@ -1,0 +1,3679 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>مستمسكات (Mustamskat) - نظام تنسيق وطباعة المستمسكات الرسمية A4 (1:1)</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <!-- Fonts: TT Bluescreens + Cairo & Inter fallbacks -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.cdnfonts.com/css/tt-bluescreens" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <!-- jsPDF for 1:1 Physical Scale PDF Export -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <!-- JSZip for True OOXML Word (.DOCX) Export with Exact Physical Dimensions -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+  <style>
+    :root {
+      /* الهوية اللونية الرسمية المطلوبة: #F2E9D8 للخلفية و #5B3A62 للنصوص */
+      --bg-main: #F2E9D8;
+      --bg-panel: #EAE0CC;
+      --bg-card: #E2D5BE;
+      --text-main: #5B3A62;
+      --text-muted: rgba(91, 58, 98, 0.72);
+      --border-soft: rgba(91, 58, 98, 0.24);
+      --border-strong: rgba(91, 58, 98, 0.55);
+      --accent-plum: #5B3A62;
+      --accent-mauve: #935073;
+
+      --a4-width-mm: 210;
+      --a4-height-mm: 297;
+      --px-per-mm: 3.3;
+    }
+
+    * {
+      box-sizing: border-box;
+      user-select: none;
+    }
+    .hidden { display: none !important; }
+
+    body {
+      font-family: 'TT Bluescreens', 'Cairo', 'Inter', sans-serif;
+      background-color: var(--bg-main);
+      color: var(--text-main);
+      margin: 0;
+      padding: 0;
+      overflow-x: hidden;
+      letter-spacing: 0.01em;
+    }
+
+    .num-ltr {
+      font-family: 'TT Bluescreens', 'Inter', monospace;
+      direction: ltr;
+      display: inline-block;
+    }
+
+    /* كلاسات الثيم الفاتح الجديد (#F2E9D8 خلفية / #5B3A62 نصوص) */
+    .bg-plum-main { background-color: var(--bg-panel); }
+    .bg-plum-deep { background-color: var(--bg-main); }
+    .bg-plum-card { background-color: var(--bg-card); }
+    .bg-mauve-accent { background-color: #935073; color: #F2E9D8; }
+    .bg-cream-accent { background-color: #5B3A62; color: #F2E9D8; }
+
+    .text-cream-main { color: var(--text-main); }
+    .text-plum-dark { color: #F2E9D8; }
+    .border-mauve { border-color: var(--border-soft); }
+    .border-cream-soft { border-color: var(--border-strong); }
+
+    /* الأزرار الأساسية والثانوية */
+    .btn-cream {
+      background-color: #5B3A62;
+      color: #F2E9D8;
+      font-weight: 800;
+      border: 1px solid #5B3A62;
+      transition: all 0.15s ease;
+    }
+    .btn-cream:hover {
+      background-color: #482d4e;
+      transform: translateY(-1px);
+      box-shadow: 0 5px 14px rgba(91, 58, 98, 0.22);
+    }
+
+    .btn-mauve {
+      background-color: #935073;
+      color: #F2E9D8;
+      font-weight: 700;
+      border: 1px solid rgba(91, 58, 98, 0.35);
+      transition: all 0.15s ease;
+    }
+    .btn-mauve:hover {
+      background-color: #7d4160;
+    }
+
+    .btn-plum-ghost {
+      background-color: rgba(91, 58, 98, 0.09);
+      color: #5B3A62;
+      border: 1px solid rgba(91, 58, 98, 0.3);
+      font-weight: 700;
+      transition: all 0.15s ease;
+    }
+    .btn-plum-ghost:hover {
+      background-color: rgba(91, 58, 98, 0.18);
+      border-color: #5B3A62;
+    }
+
+    /* التبويبات المنظمة في اللوحة الجانبية */
+    .tab-btn {
+      color: rgba(91, 58, 98, 0.68);
+      border-bottom: 3px solid transparent;
+      transition: all 0.15s ease;
+      font-weight: 700;
+    }
+    .tab-btn.active {
+      color: #5B3A62;
+      background-color: rgba(91, 58, 98, 0.11);
+      border-bottom-color: #5B3A62;
+      font-weight: 800;
+    }
+
+    /* مسرح ورقة الـ A4 */
+    .a4-stage-wrapper {
+      background-color: #E6DEC8;
+      background-image: radial-gradient(rgba(91, 58, 98, 0.18) 1px, transparent 1px);
+      background-size: 18px 18px;
+    }
+
+    .a4-paper {
+      position: relative;
+      background-color: #ffffff;
+      box-shadow:
+        0 20px 50px -12px rgba(91, 58, 98, 0.28),
+        0 0 0 1.5px rgba(91, 58, 98, 0.3);
+      transition: width 0.12s ease, height 0.12s ease;
+      transform-origin: top center;
+      overflow: hidden;
+    }
+
+    /* شبكة المليمتر الدقيقة على ورقة A4 */
+    .a4-paper.show-mm-grid::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background-image:
+        linear-gradient(to right, rgba(91, 58, 98, 0.06) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(91, 58, 98, 0.06) 1px, transparent 1px),
+        linear-gradient(to right, rgba(91, 58, 98, 0.15) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(91, 58, 98, 0.15) 1px, transparent 1px);
+      background-size:
+        calc(var(--px-per-mm) * 5px) calc(var(--px-per-mm) * 5px),
+        calc(var(--px-per-mm) * 5px) calc(var(--px-per-mm) * 5px),
+        calc(var(--px-per-mm) * 10px) calc(var(--px-per-mm) * 10px),
+        calc(var(--px-per-mm) * 10px) calc(var(--px-per-mm) * 10px);
+      z-index: 1;
+    }
+
+    /* هامش الأمان المطبعي (الهوامش المتعددة مثل وورد) */
+    .safe-margin-box {
+      position: absolute;
+      border: 1.2px dashed rgba(91, 58, 98, 0.45);
+      pointer-events: none;
+      z-index: 2;
+    }
+
+    /* مستطيل البطاقة على ورقة الـ A4 */
+    .card-slot {
+      position: absolute;
+      border: 1.8px dashed #5B3A62;
+      background-color: rgba(242, 233, 216, 0.45);
+      color: #5B3A62;
+      cursor: grab;
+      z-index: 10;
+      transition: box-shadow 0.12s ease, border-color 0.12s ease;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      overflow: visible;
+    }
+
+    .card-slot.housing-type {
+      border-color: #935073;
+      background-color: rgba(147, 80, 115, 0.10);
+    }
+
+    .card-slot.has-image {
+      border-style: solid;
+      border-width: 1px;
+      border-color: rgba(91, 58, 98, 0.35);
+      background-color: #ffffff;
+    }
+
+    .card-slot.selected {
+      border: 2.4px solid #5B3A62 !important;
+      box-shadow: 0 0 0 3px rgba(91, 58, 98, 0.28), 0 10px 22px rgba(91, 58, 98, 0.22);
+      z-index: 30;
+    }
+
+    .card-slot.multi-selected {
+      border: 2.4px solid #935073 !important;
+      box-shadow: 0 0 0 3px rgba(147, 80, 115, 0.32);
+    }
+
+    .card-slot:active {
+      cursor: grabbing;
+    }
+
+    /* علامات المقص المطبعي (Crop Marks) */
+    .crop-mark {
+      position: absolute;
+      width: 8px;
+      height: 8px;
+      pointer-events: none;
+      opacity: 0.75;
+    }
+    .crop-mark.tl { top: -5px; left: -5px; border-top: 1.3px solid #5B3A62; border-left: 1.3px solid #5B3A62; }
+    .crop-mark.tr { top: -5px; right: -5px; border-top: 1.3px solid #5B3A62; border-right: 1.3px solid #5B3A62; }
+    .crop-mark.bl { bottom: -5px; left: -5px; border-bottom: 1.3px solid #5B3A62; border-left: 1.3px solid #5B3A62; }
+    .crop-mark.br { bottom: -5px; right: -5px; border-bottom: 1.3px solid #5B3A62; border-right: 1.3px solid #5B3A62; }
+
+    /* مقبض تغيير الحجم */
+    .resize-handle {
+      position: absolute;
+      width: 12px;
+      height: 12px;
+      background: #5B3A62;
+      border: 2px solid #F2E9D8;
+      border-radius: 9999px;
+      z-index: 40;
+      display: none;
+    }
+    .card-slot.selected .resize-handle {
+      display: block;
+    }
+    .resize-handle.se {
+      bottom: -6px;
+      left: -6px;
+      cursor: nwse-resize;
+    }
+
+    /* خطوط المحاذاة المغناطيسية الذكية */
+    .smart-guide-v,
+    .smart-guide-h {
+      position: absolute;
+      pointer-events: none;
+      z-index: 50;
+      display: none;
+    }
+    .smart-guide-v {
+      top: 0;
+      bottom: 0;
+      width: 1.5px;
+      background: #935073;
+      box-shadow: 0 0 6px rgba(147, 80, 115, 0.9);
+    }
+    .smart-guide-h {
+      left: 0;
+      right: 0;
+      height: 1.5px;
+      background: #935073;
+      box-shadow: 0 0 6px rgba(147, 80, 115, 0.9);
+    }
+    .smart-guide-badge {
+      position: absolute;
+      background: #5B3A62;
+      color: #F2E9D8;
+      border: 1px solid #F2E9D8;
+      font-size: 10px;
+      font-family: 'TT Bluescreens', 'Inter', monospace;
+      padding: 1px 6px;
+      border-radius: 4px;
+      white-space: nowrap;
+      z-index: 55;
+      pointer-events: none;
+      display: none;
+    }
+
+    input[type="range"] {
+      accent-color: #5B3A62;
+    }
+    input[type="checkbox"] {
+      accent-color: #5B3A62;
+    }
+
+    ::-webkit-scrollbar {
+      width: 7px;
+      height: 7px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #EAE0CC;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #5B3A62;
+      border-radius: 4px;
+    }
+
+    /* الطباعة المباشرة بمقياس حقيقي 1:1 */
+    @media print {
+      @page {
+        size: A4 portrait;
+        margin: 0mm;
+      }
+      html, body {
+        width: 210mm !important;
+        height: 297mm !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        background: #ffffff !important;
+        overflow: hidden !important;
+      }
+      .no-print {
+        display: none !important;
+      }
+      #printMountArea {
+        display: block !important;
+        position: fixed !important;
+        inset: 0 !important;
+        width: 210mm !important;
+        height: 297mm !important;
+        z-index: 99999 !important;
+        background: #ffffff !important;
+      }
+      #printMountArea img {
+        width: 210mm !important;
+        height: 297mm !important;
+        display: block !important;
+      }
+    }
+  
+    /* =====================================================================
+       ثيم وتصميم تطبيق الأندرويد المخصص (.APK Mobile Mode)
+       الخلفية: #F0F4EB | النص: #BDA383 | تصميم متجاوب لشاشات الهواتف
+       ===================================================================== */
+    body.apk-mobile-mode {
+      --bg-main: #F0F4EB;
+      --bg-panel: #E6ECE0;
+      --bg-card: #DCE4D4;
+      --text-main: #BDA383;
+      --text-muted: rgba(189, 163, 131, 0.82);
+      --border-soft: rgba(189, 163, 131, 0.35);
+      --border-strong: rgba(189, 163, 131, 0.72);
+      --accent-plum: #BDA383;
+      --accent-mauve: #9E8364;
+      background-color: #F0F4EB !important;
+      color: #BDA383 !important;
+    }
+
+    body.apk-mobile-mode .bg-plum-main { background-color: #E6ECE0 !important; color: #BDA383 !important; }
+    body.apk-mobile-mode .bg-plum-deep { background-color: #F0F4EB !important; color: #BDA383 !important; }
+    body.apk-mobile-mode .bg-plum-card { background-color: #DCE4D4 !important; color: #BDA383 !important; }
+    body.apk-mobile-mode .text-cream-main { color: #BDA383 !important; }
+
+    body.apk-mobile-mode .btn-cream {
+      background-color: #BDA383 !important;
+      color: #F0F4EB !important;
+      border-color: #BDA383 !important;
+    }
+    body.apk-mobile-mode .btn-mauve {
+      background-color: #9E8364 !important;
+      color: #F0F4EB !important;
+      border-color: #BDA383 !important;
+    }
+    body.apk-mobile-mode .btn-plum-ghost {
+      background-color: rgba(189, 163, 131, 0.14) !important;
+      color: #BDA383 !important;
+      border-color: rgba(189, 163, 131, 0.48) !important;
+    }
+    body.apk-mobile-mode .tab-btn {
+      color: rgba(189, 163, 131, 0.75) !important;
+    }
+    body.apk-mobile-mode .tab-btn.active {
+      color: #BDA383 !important;
+      background-color: rgba(189, 163, 131, 0.18) !important;
+      border-bottom-color: #BDA383 !important;
+    }
+    body.apk-mobile-mode .a4-stage-wrapper {
+      background-color: #E3EAE0 !important;
+      background-image: radial-gradient(rgba(189, 163, 131, 0.25) 1px, transparent 1px) !important;
+    }
+    body.apk-mobile-mode .card-slot {
+      border-color: #BDA383 !important;
+      background-color: rgba(240, 244, 235, 0.78) !important;
+      color: #BDA383 !important;
+    }
+    body.apk-mobile-mode .card-slot.selected {
+      border-color: #BDA383 !important;
+      box-shadow: 0 0 0 3px rgba(189, 163, 131, 0.35), 0 10px 22px rgba(189, 163, 131, 0.25) !important;
+    }
+    body.apk-mobile-mode .crop-mark {
+      border-color: #BDA383 !important;
+    }
+
+    /* محاكاة إطار الهاتف في حال تفعيل عرض الأندرويد على شاشة سطح المكتب */
+    body.apk-phone-frame main {
+      max-width: 430px;
+      margin: 0 auto;
+      border-left: 2px solid rgba(189, 163, 131, 0.45);
+      border-right: 2px solid rgba(189, 163, 131, 0.45);
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.12);
+    }
+    body.apk-phone-frame header > div {
+      max-width: 430px;
+    }
+
+    /* التكيف التلقائي مع مقاسات شاشات الهواتف الذكية (Android Responsive Layout) */
+    @media (max-width: 768px) {
+      header {
+        padding: 6px 10px !important;
+      }
+      #a4StageScroll {
+        padding: 10px !important;
+      }
+      aside {
+        height: 46vh !important;
+        border-top: 2px solid var(--border-strong);
+        border-radius: 18px 18px 0 0;
+      }
+      .tab-btn {
+        font-size: 11px !important;
+        padding: 8px 4px !important;
+      }
+    }
+
+  </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden apk-mobile-mode">
+
+  <!-- منطقة الطباعة المباشرة المخفية (1:1 A4 Hardware Print) -->
+  <div id="printMountArea" class="hidden"></div>
+
+  <!-- مدخل اختيار ملف صورة البطاقة -->
+  <input type="file" id="cardImageInput" accept="image/*" class="hidden" />
+
+  <!-- =========================================================================
+       1. الشريط العلوي المبسّط والمنظم (Minimalist Top Toolbar)
+       ========================================================================= -->
+  <header class="no-print bg-plum-main border-b border-mauve px-4 py-2 shadow-sm shrink-0 z-30">
+    <div class="max-w-[1680px] mx-auto flex flex-wrap items-center justify-between gap-3">
+
+      <!-- الشعار واسم التطبيق -->
+      <div class="flex items-center gap-2.5">
+        <div class="w-9 h-9 rounded-xl bg-cream-accent text-plum-dark flex items-center justify-center font-extrabold shadow-sm">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-base font-extrabold text-cream-main">مستمسكات <span class="text-xs font-bold opacity-80 num-ltr">Mustamskat 1:1</span></h1>
+            <span id="realmEngineText" class="text-[10px] px-2 py-0.5 rounded-full bg-mauve-accent font-bold">Realm DB</span>
+          </div>
+          <p class="text-[11px] opacity-80 hidden sm:block">تنسيق البطاقة الموحدة وبطاقة السكن على ورق A4 بمقياس حقيقي 100%</p>
+        </div>
+      </div>
+
+      <!-- الأزرار الأساسية للإضافة والتراجع والإعدادات -->
+      <div class="flex flex-wrap items-center gap-1.5">
+        <button id="btnAddNationalId" type="button" class="btn-cream px-3 py-1.5 rounded-xl text-xs sm:text-sm inline-flex items-center gap-1.5 shadow-sm">
+          <span>+ بطاقة موحدة</span>
+          <span class="text-[10px] px-1.5 py-0.5 rounded bg-white/20 num-ltr">8.6×5.4cm</span>
+        </button>
+
+        <button id="btnAddHousingCard" type="button" class="btn-mauve px-3 py-1.5 rounded-xl text-xs sm:text-sm inline-flex items-center gap-1.5 shadow-sm">
+          <span>+ بطاقة سكن</span>
+          <span class="text-[10px] px-1.5 py-0.5 rounded bg-black/20 num-ltr">9.0×6.0cm</span>
+        </button>
+
+        <!-- أزرار التراجع والإعادة السريعة (Ctrl+Z / Ctrl+Y) -->
+        <button id="btnUndoAction" type="button" class="btn-plum-ghost px-2.5 py-1.5 rounded-xl text-xs font-bold inline-flex items-center gap-1" title="تراجع عن آخر خطوة (Ctrl+Z)">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" />
+          </svg>
+          <span>تراجع</span>
+          <span id="undoCountBadge" class="text-[10px] opacity-75 num-ltr">(0)</span>
+        </button>
+
+        <button id="btnSelectAllSlots" type="button" class="btn-plum-ghost px-2.5 py-1.5 rounded-xl text-xs font-bold" title="تحديد جميع البطاقات (Ctrl+A)">
+          تحديد الكل
+        </button>
+
+        <button id="btnClearA4Sheet" type="button" class="btn-plum-ghost px-2.5 py-1.5 rounded-xl text-xs font-bold" title="تصفير وتفريغ الورقة">
+          تصفير الورقة
+        </button>
+
+        <button id="btnTogglePlatformMode" type="button" class="btn-mauve px-2.5 py-1.5 rounded-xl text-xs font-extrabold inline-flex items-center gap-1 shadow-sm" title="التبديل بين واجهة برنامج الويندوز (.EXE) وواجهة تطبيق الأندرويد للهواتف (.APK)">
+          <span id="platformModeLabel">وضع الأندرويد (.APK)</span>
+        </button>
+        <button id="btnOpenSettingsTop" type="button" class="btn-plum-ghost px-2.5 py-1.5 rounded-xl text-xs font-bold inline-flex items-center gap-1" title="فتح صفحة الضبط والإعدادات الشاملة">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+          <span>الضبط</span>
+        </button>
+      </div>
+
+      <!-- التصدير والطباعة المباشرة -->
+      <div class="flex items-center gap-2">
+        <div class="relative">
+          <button id="btnToggleExportMenu" type="button" class="btn-mauve px-3 py-1.5 rounded-xl text-xs sm:text-sm inline-flex items-center gap-1.5">
+            <span>تصدير الملف</span>
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+
+          <!-- قائمة صيغ التصدير -->
+          <div id="exportDropdownMenu" class="hidden absolute left-0 mt-2 w-60 rounded-xl bg-plum-main border border-cream-soft shadow-2xl py-1.5 z-50">
+            <button id="btnExportPdf" type="button" class="w-full px-3.5 py-2 text-right hover:bg-black/10 flex items-center justify-between text-xs font-bold transition">
+              <span>ملف PDF قياسي للطباعة</span>
+              <span class="text-[10px] px-1.5 py-0.5 rounded bg-cream-accent text-plum-dark font-extrabold num-ltr">PDF 1:1</span>
+            </button>
+            <button id="btnExportPng" type="button" class="w-full px-3.5 py-2 text-right hover:bg-black/10 flex items-center justify-between text-xs font-bold transition">
+              <span>صورة PNG عالية الدقة</span>
+              <span class="text-[10px] opacity-80 num-ltr">300 DPI</span>
+            </button>
+            <button id="btnExportJpg" type="button" class="w-full px-3.5 py-2 text-right hover:bg-black/10 flex items-center justify-between text-xs font-bold transition">
+              <span>صورة JPG للأرشفة</span>
+              <span class="text-[10px] opacity-80 num-ltr">300 DPI</span>
+            </button>
+            <button id="btnExportDocx" type="button" class="w-full px-3.5 py-2 text-right hover:bg-black/10 flex items-center justify-between text-xs font-bold transition">
+              <span>مستند وورد (Word)</span>
+              <span class="text-[10px] opacity-80 num-ltr">DOCX</span>
+            </button>
+          </div>
+        </div>
+
+        <button id="btnDirectPrint" type="button" class="btn-cream px-3.5 py-1.5 rounded-xl text-xs sm:text-sm inline-flex items-center gap-1.5 shadow-sm">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+          </svg>
+          <span>طباعة مباشرة</span>
+        </button>
+      </div>
+
+    </div>
+  </header>
+
+  <!-- =========================================================================
+       2. مساحة العمل الرئيسية: (ورقة A4 في المركز + لوحة جانبية واحدة بـ 4 تبويبات منظمة)
+       ========================================================================= -->
+  <main class="no-print flex-1 flex flex-col lg:flex-row overflow-hidden">
+
+    <!-- أ) مساحة ورقة الـ A4 البيضاء -->
+    <section class="flex-1 flex flex-col overflow-hidden">
+
+      <!-- شريط حالة مصغر أعلى الورقة يعرض الاختصارات والهوامش -->
+      <div class="px-4 py-1.5 bg-plum-card border-b border-mauve flex flex-wrap items-center justify-between gap-2 text-xs shrink-0">
+        <div class="flex items-center gap-3">
+          <span class="font-extrabold">ورقة A4 <span class="num-ltr opacity-80">(210 × 297 mm)</span></span>
+          <span id="marginPresetBadge" class="px-2 py-0.5 rounded bg-white/60 text-[11px] font-bold">هامش وورد: ضيق (12.7 mm)</span>
+          <span id="statusCoordinates" class="text-[11px] opacity-85 num-ltr hidden md:inline-block">الصفحة فارغة (الوضع الافتراضي المصفر)</span>
+        </div>
+
+        <div class="flex items-center gap-1.5">
+          <span class="text-[10px] opacity-75 hidden xl:inline-block ml-2">
+            اختصارات: <span class="num-ltr font-bold">Ctrl+Z</span> تراجع | <span class="num-ltr font-bold">Ctrl+A</span> تحديد الكل | <span class="num-ltr font-bold">Shift+RightClick</span> تحديد متعدد | <span class="num-ltr font-bold">Del</span> حذف
+          </span>
+          <button id="btnZoomOut" type="button" class="btn-plum-ghost px-2 py-0.5 rounded text-xs font-bold num-ltr">-</button>
+          <span id="zoomPercentLabel" class="text-xs font-bold num-ltr min-w-[42px] text-center">100%</span>
+          <button id="btnZoomIn" type="button" class="btn-plum-ghost px-2 py-0.5 rounded text-xs font-bold num-ltr">+</button>
+          <button id="btnZoomReset" type="button" class="btn-plum-ghost px-2 py-0.5 rounded text-[11px]">100%</button>
+        </div>
+      </div>
+
+      <!-- مسرح الورقة القابل للتمرير -->
+      <div id="a4StageScroll" class="a4-stage-wrapper flex-1 overflow-auto p-4 sm:p-6 flex justify-center items-start">
+        <div id="a4PaperCanvas" class="a4-paper show-mm-grid">
+          <div id="safeMarginOverlay" class="safe-margin-box"></div>
+          <div id="smartGuideV" class="smart-guide-v"></div>
+          <div id="smartGuideH" class="smart-guide-h"></div>
+          <div id="smartGuideBadge" class="smart-guide-badge"></div>
+          <div id="cardsMountLayer" class="absolute inset-0 z-10"></div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ب) اللوحة الجانبية الموحدة (4 تبويبات شاملة تشمل صفحة الضبط والإعدادات) -->
+    <aside class="w-full lg:w-[380px] bg-plum-main border-r border-mauve flex flex-col shrink-0 h-[44vh] lg:h-auto overflow-hidden shadow-xl">
+
+      <!-- رؤوس التبويبات الأربعة -->
+      <div class="grid grid-cols-4 bg-plum-deep border-b border-mauve text-[11px] shrink-0">
+        <button type="button" data-tab-target="tabCard" class="sidebar-tab-btn tab-btn active py-2.5 px-1 text-center">
+          1. البطاقة والفلاتر
+        </button>
+        <button type="button" data-tab-target="tabSheet" class="sidebar-tab-btn tab-btn py-2.5 px-1 text-center">
+          2. تخطيط الورقة
+        </button>
+        <button type="button" data-tab-target="tabRealm" class="sidebar-tab-btn tab-btn py-2.5 px-1 text-center">
+          3. الحفظ والأرشيف <span id="realmCountBadge" class="px-1 rounded-full bg-mauve-accent text-[9px] num-ltr">0</span>
+        </button>
+        <button type="button" data-tab-target="tabSettings" class="sidebar-tab-btn tab-btn py-2.5 px-1 text-center">
+          4. الضبط الشامل
+        </button>
+      </div>
+
+      <!-- محتوى التبويبات -->
+      <div class="flex-1 overflow-y-auto p-3.5 space-y-3.5">
+
+        <!-- ===============================================================
+             التبويب الأول: البطاقة المحددة والفلاتر (Card & Filters Tab)
+             =============================================================== -->
+        <div id="tabCard" class="sidebar-tab-pane space-y-3.5">
+
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-extrabold">البطاقة المحددة:</span>
+            <span id="selectedSlotBadge" class="text-[11px] px-2.5 py-0.5 rounded-full bg-mauve-accent font-bold">غير محدد</span>
+          </div>
+
+          <div id="noSelectionHint" class="p-4 rounded-xl bg-plum-card border border-mauve text-center text-xs leading-relaxed">
+            الورقة فارغة ومصفّرة على الوضع الافتراضي. اضغط <strong>"+ بطاقة موحدة"</strong> أو <strong>"+ بطاقة سكن"</strong> من الأعلى للبدء، أو استخدم <span class="num-ltr font-bold">Shift + Right Click</span> لتحديد عدة بطاقات معاً.
+          </div>
+
+          <div id="selectedInspectorPanel" class="hidden space-y-3.5">
+
+            <!-- زرا الصورة وتصحيح المنظور -->
+            <div class="grid grid-cols-2 gap-2">
+              <button id="btnInspectorUpload" type="button" class="btn-cream py-2 px-3 rounded-xl text-xs flex items-center justify-center gap-1.5">
+                <span>رفع / تغيير الصورة</span>
+              </button>
+              <button id="btnInspectorPerspective" type="button" class="btn-mauve py-2 px-3 rounded-xl text-xs flex items-center justify-center gap-1.5">
+                <span>قص وتعديل الزوايا</span>
+              </button>
+            </div>
+
+            <!-- قسم الفلاتر والوضوح (الافتراضي: أصلي 100%) -->
+            <div class="p-3 rounded-xl bg-plum-card border border-mauve space-y-2.5">
+              <div class="flex items-center justify-between text-xs font-extrabold">
+                <span>الفلتر والألوان:</span>
+                <span id="activeFilterLabel" class="text-[11px] font-bold">أصلي (Original)</span>
+              </div>
+
+              <div class="grid grid-cols-2 gap-1.5">
+                <button type="button" data-filter-mode="original" class="filter-mode-btn py-1.5 px-2 rounded-lg text-xs font-bold">
+                  أصلي (Original)
+                </button>
+                <button type="button" data-filter-mode="magic" class="filter-mode-btn py-1.5 px-2 rounded-lg text-xs font-bold">
+                  Magic (تبييض ذكي)
+                </button>
+                <button type="button" data-filter-mode="bw" class="filter-mode-btn py-1.5 px-2 rounded-lg text-xs font-bold">
+                  أبيض وأسود حاد
+                </button>
+                <button type="button" data-filter-mode="gray" class="filter-mode-btn py-1.5 px-2 rounded-lg text-xs font-bold">
+                  رمادي متوازن
+                </button>
+              </div>
+
+              <!-- أشرطة السطوع والتباين والـ Threshold (الافتراضي 100% / 100%) -->
+              <div class="space-y-2 pt-1 text-xs">
+                <div>
+                  <div class="flex justify-between text-[11px] mb-0.5">
+                    <span>السطوع (Brightness)</span>
+                    <span id="lblBrightness" class="font-bold num-ltr">100%</span>
+                  </div>
+                  <input id="rngBrightness" type="range" min="50" max="160" value="100" class="w-full cursor-pointer" />
+                </div>
+
+                <div>
+                  <div class="flex justify-between text-[11px] mb-0.5">
+                    <span>التباين (Contrast)</span>
+                    <span id="lblContrast" class="font-bold num-ltr">100%</span>
+                  </div>
+                  <input id="rngContrast" type="range" min="50" max="200" value="100" class="w-full cursor-pointer" />
+                </div>
+
+                <div>
+                  <div class="flex justify-between text-[11px] mb-0.5">
+                    <span>عتبة الأبيض والأسود (Threshold)</span>
+                    <span id="lblThreshold" class="font-bold num-ltr">128</span>
+                  </div>
+                  <input id="rngThreshold" type="range" min="60" max="220" value="128" class="w-full cursor-pointer" />
+                </div>
+
+                <label class="flex items-center gap-2 text-xs cursor-pointer pt-0.5">
+                  <input id="chkSharpenText" type="checkbox" class="rounded" />
+                  <span>تحديد حواف النصوص والبصمات (Sharpen)</span>
+                </label>
+
+                <div class="grid grid-cols-2 gap-1.5 pt-1">
+                  <button id="btnResetCardFilters" type="button" class="btn-plum-ghost py-1.5 px-2 rounded-lg text-[11px] font-bold">
+                    تصفير فلتر البطاقة (100%)
+                  </button>
+                  <button id="btnApplyGlobalMagic" type="button" class="btn-plum-ghost py-1.5 px-2 rounded-lg text-[11px] font-bold">
+                    تعميم على كل الورقة
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- قسم الموقع، الأبعاد بالمليمتر، والتدوير -->
+            <div class="p-3 rounded-xl bg-plum-card border border-mauve space-y-2 text-xs">
+              <div class="flex items-center justify-between">
+                <span class="font-extrabold">الموقع والمقاس (mm):</span>
+                <button id="btnResetStandardSize" type="button" class="text-[11px] underline font-bold">إرجاع للقياس القياسي</button>
+              </div>
+
+              <div class="grid grid-cols-2 gap-2">
+                <div>
+                  <label class="block text-[10px] opacity-80">الموقع الأفقي X (mm)</label>
+                  <input id="inpSlotX" type="number" step="0.5" class="w-full mt-0.5 px-2 py-1 rounded-lg bg-plum-deep border border-mauve text-cream-main num-ltr text-xs" />
+                </div>
+                <div>
+                  <label class="block text-[10px] opacity-80">الموقع العمودي Y (mm)</label>
+                  <input id="inpSlotY" type="number" step="0.5" class="w-full mt-0.5 px-2 py-1 rounded-lg bg-plum-deep border border-mauve text-cream-main num-ltr text-xs" />
+                </div>
+                <div>
+                  <label class="block text-[10px] opacity-80">العرض Width (mm)</label>
+                  <input id="inpSlotW" type="number" step="0.5" class="w-full mt-0.5 px-2 py-1 rounded-lg bg-plum-deep border border-mauve text-cream-main num-ltr text-xs" />
+                </div>
+                <div>
+                  <label class="block text-[10px] opacity-80">الارتفاع Height (mm)</label>
+                  <input id="inpSlotH" type="number" step="0.5" class="w-full mt-0.5 px-2 py-1 rounded-lg bg-plum-deep border border-mauve text-cream-main num-ltr text-xs" />
+                </div>
+              </div>
+
+              <div class="flex items-center justify-between pt-1">
+                <span>التدوير:</span>
+                <div class="flex gap-1">
+                  <button id="btnRotateLeft90" type="button" class="btn-plum-ghost px-2 py-0.5 rounded text-xs font-bold num-ltr">-90°</button>
+                  <button id="btnRotateZero" type="button" class="btn-plum-ghost px-2 py-0.5 rounded text-xs font-bold num-ltr">0°</button>
+                  <button id="btnRotateRight90" type="button" class="btn-plum-ghost px-2 py-0.5 rounded text-xs font-bold num-ltr">+90°</button>
+                </div>
+              </div>
+              <input id="inpSlotRotation" type="range" min="-180" max="180" step="1" value="0" class="w-full cursor-pointer" />
+            </div>
+
+            <button id="btnDeleteSelectedSlot" type="button" class="w-full py-2 px-3 rounded-xl bg-rose-900 text-white text-xs font-bold transition">
+              حذف هذه البطاقة من الورقة
+            </button>
+
+          </div>
+        </div>
+
+        <!-- ===============================================================
+             التبويب الثاني: الهوامش المتعددة (وورد) وتخطيط الورقة
+             =============================================================== -->
+        <div id="tabSheet" class="sidebar-tab-pane hidden space-y-3.5">
+
+          <!-- قوالب هوامش Microsoft Word (ضيق، متوسط، عادي، مخصص) -->
+          <div class="p-3 rounded-xl bg-plum-card border border-mauve space-y-2.5 text-xs">
+            <div class="flex items-center justify-between">
+              <span class="font-extrabold">هوامش الصفحة (نظام Microsoft Word):</span>
+              <span id="marginValueText" class="font-extrabold num-ltr">1.27 cm (12.7 mm)</span>
+            </div>
+
+            <div class="grid grid-cols-3 gap-1.5">
+              <button type="button" data-margin-preset="narrow" class="margin-preset-btn btn-cream py-2 px-2 rounded-lg text-center">
+                <div class="font-extrabold text-xs">ضيق</div>
+                <div class="text-[10px] opacity-85 num-ltr">1.27 cm</div>
+              </button>
+              <button type="button" data-margin-preset="moderate" class="margin-preset-btn btn-plum-ghost py-2 px-2 rounded-lg text-center">
+                <div class="font-extrabold text-xs">متوسط</div>
+                <div class="text-[10px] opacity-85 num-ltr">1.91 cm</div>
+              </button>
+              <button type="button" data-margin-preset="normal" class="margin-preset-btn btn-plum-ghost py-2 px-2 rounded-lg text-center">
+                <div class="font-extrabold text-xs">عادي</div>
+                <div class="text-[10px] opacity-85 num-ltr">2.54 cm</div>
+              </button>
+            </div>
+
+            <div class="pt-1">
+              <div class="flex justify-between text-[11px] mb-0.5">
+                <span>ضبط يدوي للهامش (مخصص بالمليمتر):</span>
+                <span class="num-ltr font-bold" id="customMarginMmLabel">12.7 mm</span>
+              </div>
+              <input id="marginRangeInput" type="range" min="4" max="26" step="0.1" value="12.7" class="w-full cursor-pointer" />
+            </div>
+
+            <!-- خيار تباعد الوجهين لأقصى طرفي الصفحة -->
+            <div class="pt-2 border-t border-mauve space-y-2">
+              <label class="flex items-center justify-between cursor-pointer font-bold">
+                <span>تباعد الوجهين لأقصى طرفي الورقة (يمين ويسار):</span>
+                <input id="chkSpreadMaxSides" type="checkbox" checked class="rounded" />
+              </label>
+              <p class="text-[10px] opacity-80 leading-relaxed">
+                عند التفعيل، يوضع الوجه الأول في أقصى الطرف الأيمن للورقة والوجه الثاني (الظهر) في أقصى الطرف الأيسر بأكبر مسافة فاصلة ممكنة بينهما.
+              </p>
+            </div>
+
+            <div>
+              <div class="flex justify-between mb-0.5">
+                <span class="font-bold">المسافة العمودية بين الصفوف (Spacer):</span>
+                <span id="spacerValueText" class="font-extrabold num-ltr">0.60 cm (6 mm)</span>
+              </div>
+              <input id="spacerRangeInput" type="range" min="4" max="15" step="0.5" value="6" class="w-full cursor-pointer" />
+            </div>
+          </div>
+
+          <!-- قوالب التوزيع السريع -->
+          <div class="p-3 rounded-xl bg-plum-card border border-mauve space-y-2">
+            <h3 class="text-xs font-extrabold">أدوات التوزيع السريع على الورقة:</h3>
+            <button id="btnAutoArrangeSheet" type="button" class="w-full btn-cream py-2 px-3 rounded-xl text-xs">
+              ترتيب البطاقات الحالية تلقائياً
+            </button>
+            <button id="btnFillFiveNationalIds" type="button" class="w-full btn-mauve py-2 px-3 rounded-xl text-xs">
+              تعبئة 5 بطاقات موحدة (السعة القصوى 10 أوجه)
+            </button>
+            <button id="btnLoadDemoCards" type="button" class="w-full btn-plum-ghost py-2 px-3 rounded-xl text-xs">
+              إدراج نموذج تجريبي (موحدة + سكن)
+            </button>
+          </div>
+
+          <!-- قائمة البطاقات الموجودة على الورقة -->
+          <div class="p-3 rounded-xl bg-plum-card border border-mauve space-y-2">
+            <div class="flex items-center justify-between text-xs">
+              <span class="font-extrabold">العناصر المضافة على الورقة:</span>
+              <span id="slotsCountText" class="text-[11px] font-bold">0 عنصر</span>
+            </div>
+            <div id="slotsListContainer" class="space-y-1.5 max-h-[180px] overflow-y-auto"></div>
+          </div>
+
+        </div>
+
+        <!-- ===============================================================
+             التبويب الثالث: الحفظ وأرشيف قاعدة البيانات Realm DB
+             =============================================================== -->
+        <div id="tabRealm" class="sidebar-tab-pane hidden space-y-3.5">
+
+          <div class="p-3.5 rounded-xl bg-plum-card border border-mauve space-y-3">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-extrabold">حفظ المعاملة الحالية (Realm DB):</span>
+              <span id="activeSessionIdLabel" class="text-[10px] font-bold num-ltr">#جديدة</span>
+            </div>
+
+            <div>
+              <label for="customerNameInput" class="block text-[11px] font-bold mb-1">اسم الزبون أو عنوان المعاملة:</label>
+              <input id="customerNameInput" type="text" placeholder="أدخل اسم الزبون لحفظ الورقة..." class="w-full px-3 py-2 rounded-xl bg-plum-deep border border-mauve text-xs text-cream-main focus:outline-none" />
+            </div>
+
+            <button id="btnQuickSaveRealm" type="button" class="w-full btn-cream py-2.5 px-3 rounded-xl text-xs flex items-center justify-center gap-1.5">
+              <span>حفظ الورقة في قاعدة بيانات Realm DB (Ctrl+S)</span>
+            </button>
+          </div>
+
+          <div class="p-3.5 rounded-xl bg-plum-card border border-mauve space-y-2.5">
+            <h3 class="text-xs font-extrabold">سجل المعاملات المحفوظة:</h3>
+            <div id="realmSessionsList" class="space-y-2 max-h-[280px] overflow-y-auto"></div>
+          </div>
+
+        </div>
+
+        <!-- ===============================================================
+             التبويب الرابع: صفحة الإعدادات والضبط الشامل للبرنامج (Full Settings Page)
+             =============================================================== -->
+        <div id="tabSettings" class="sidebar-tab-pane hidden space-y-3.5 text-xs">
+
+          <div class="p-3.5 rounded-xl bg-plum-card border border-mauve space-y-3">
+            <h3 class="font-extrabold text-sm border-b border-mauve pb-1.5">ضبط الإعدادات الافتراضية للبرنامج</h3>
+
+            <!-- اسم المكتب -->
+            <div>
+              <label for="setOfficeName" class="block text-[11px] font-bold mb-1">اسم المكتب الخدمي:</label>
+              <input id="setOfficeName" type="text" value="مكتب مستمسكات للطباعة والاستنساخ" class="w-full px-2.5 py-1.5 rounded-lg bg-plum-deep border border-mauve text-xs" />
+            </div>
+
+            <!-- الهامش الافتراضي عند فتح البرنامج -->
+            <div>
+              <label for="setDefaultMarginPreset" class="block text-[11px] font-bold mb-1">الهامش الافتراضي (مثل Microsoft Word):</label>
+              <select id="setDefaultMarginPreset" class="w-full px-2.5 py-1.5 rounded-lg bg-plum-deep border border-mauve text-xs font-bold">
+                <option value="narrow" selected>ضيق - Narrow (1.27 سم / 12.7 ملم)</option>
+                <option value="moderate">متوسط - Moderate (1.91 سم / 19.1 ملم)</option>
+                <option value="normal">عادي - Normal (2.54 سم / 25.4 ملم)</option>
+              </select>
+            </div>
+
+            <!-- الفلتر الافتراضي عند إدراج الصور -->
+            <div>
+              <label for="setDefaultFilterMode" class="block text-[11px] font-bold mb-1">الفلتر الافتراضي للصور الجديدة:</label>
+              <select id="setDefaultFilterMode" class="w-full px-2.5 py-1.5 rounded-lg bg-plum-deep border border-mauve text-xs font-bold">
+                <option value="original" selected>أصلي بدون تعديل (Original - 100%)</option>
+                <option value="magic">تبييض ذكي (Magic Color)</option>
+                <option value="bw">أبيض وأسود حاد (B&amp;W Threshold)</option>
+                <option value="gray">رمادي متوازن (Grayscale)</option>
+              </select>
+            </div>
+
+            <!-- السطوع والتباين الافتراضي -->
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                <label for="setDefaultBrightness" class="block text-[11px] font-bold mb-1">السطوع الافتراضي (%):</label>
+                <input id="setDefaultBrightness" type="number" min="50" max="160" value="100" class="w-full px-2.5 py-1.5 rounded-lg bg-plum-deep border border-mauve text-xs num-ltr font-bold" />
+              </div>
+              <div>
+                <label for="setDefaultContrast" class="block text-[11px] font-bold mb-1">التباين الافتراضي (%):</label>
+                <input id="setDefaultContrast" type="number" min="50" max="200" value="100" class="w-full px-2.5 py-1.5 rounded-lg bg-plum-deep border border-mauve text-xs num-ltr font-bold" />
+              </div>
+            </div>
+
+            <!-- دقة التصدير والطباعة -->
+            <div>
+              <label for="setExportDpi" class="block text-[11px] font-bold mb-1">دقة التصدير والطباعة (DPI):</label>
+              <select id="setExportDpi" class="w-full px-2.5 py-1.5 rounded-lg bg-plum-deep border border-mauve text-xs num-ltr font-bold">
+                <option value="300" selected>300 DPI (دقة مطبعية قياسية فائقة)</option>
+                <option value="200">200 DPI (متوسطة سريعة)</option>
+                <option value="150">150 DPI (أرشفة خفيفة)</option>
+              </select>
+            </div>
+
+            <!-- خيارات الورقة والعرض -->
+            <div class="pt-2 border-t border-mauve grid grid-cols-2 gap-2">
+              <label class="flex items-center gap-1.5 cursor-pointer">
+                <input id="chkShowMmGrid" type="checkbox" checked class="rounded" />
+                <span>شبكة المليمتر</span>
+              </label>
+              <label class="flex items-center gap-1.5 cursor-pointer">
+                <input id="chkSmartGuides" type="checkbox" checked class="rounded" />
+                <span>محاذاة ذكية</span>
+              </label>
+              <label class="flex items-center gap-1.5 cursor-pointer">
+                <input id="chkCropMarks" type="checkbox" checked class="rounded" />
+                <span>علامات القص</span>
+              </label>
+              <label class="flex items-center gap-1.5 cursor-pointer">
+                <input id="chkShowSafeMargin" type="checkbox" checked class="rounded" />
+                <span>إطار الهامش</span>
+              </label>
+            </div>
+
+            <div class="pt-2 flex flex-col gap-2">
+              <button id="btnSaveSettingsConfig" type="button" class="w-full btn-cream py-2 px-3 rounded-xl text-xs">
+                حفظ وتطبيق إعدادات البرنامج
+              </button>
+              <button id="btnFactoryResetAll" type="button" class="w-full btn-plum-ghost py-2 px-3 rounded-xl text-xs">
+                تصفير شامل وإرجاع جميع الإعدادات للوضع الافتراضي
+              </button>
+            </div>
+          </div>
+
+          <!-- جدول مرجعي لاختصارات الكيبورد والماوس المدعومة -->
+          <div class="p-3 rounded-xl bg-plum-card border border-mauve space-y-1.5">
+            <h4 class="font-extrabold text-xs">اختصارات لوحة المفاتيح والماوس الفعالة:</h4>
+            <div class="space-y-1 text-[11px]">
+              <div class="flex justify-between"><span class="font-bold">تراجع عن خطوة:</span><span class="num-ltr font-extrabold">Ctrl + Z</span></div>
+              <div class="flex justify-between"><span class="font-bold">إعادة خطوة:</span><span class="num-ltr font-extrabold">Ctrl + Y</span></div>
+              <div class="flex justify-between"><span class="font-bold">تحديد جميع البطاقات:</span><span class="num-ltr font-extrabold">Ctrl + A</span></div>
+              <div class="flex justify-between"><span class="font-bold">تحديد متعدد بالماوس:</span><span class="num-ltr font-extrabold">Shift + Right Click</span></div>
+              <div class="flex justify-between"><span class="font-bold">حذف البطاقات المحددة:</span><span class="num-ltr font-extrabold">Delete / Backspace</span></div>
+              <div class="flex justify-between"><span class="font-bold">تحريك دقيق بالمليمتر:</span><span class="num-ltr font-extrabold">الأسهم (↑ ↓ ← →)</span></div>
+              <div class="flex justify-between"><span class="font-bold">حفظ في Realm DB:</span><span class="num-ltr font-extrabold">Ctrl + S</span></div>
+              <div class="flex justify-between"><span class="font-bold">طباعة مباشرة:</span><span class="num-ltr font-extrabold">Ctrl + P</span></div>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+    </aside>
+
+  </main>
+
+  <!-- =========================================================================
+       3. نافذة المعالجة الذكية للصور وتصحيح المنظور (AI Edge Detection & Perspective Warp Modal)
+       ========================================================================= -->
+  <div id="perspectiveModal" class="no-print hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6">
+    <div class="bg-plum-main border-2 border-cream-soft rounded-2xl max-w-5xl w-full overflow-hidden shadow-2xl flex flex-col max-h-[92vh]">
+
+      <!-- رأس النافذة -->
+      <div class="px-5 py-3 bg-plum-card border-b border-mauve flex items-center justify-between">
+        <div>
+          <h3 class="text-sm sm:text-base font-extrabold text-cream-main">
+            القص الذكي وتصحيح المنظور (Auto Edge Detection &amp; Perspective Warp)
+          </h3>
+          <p class="text-[11px] opacity-85">
+            يتم عزل البطاقة عن الخلفية وكشف زواياها الأربع تلقائياً؛ ويمكنك سحب الدوائر الأربع لتعديل القص بدقة <span id="cropModalTargetSize" class="num-ltr font-extrabold underline">8.60 × 5.40 cm</span>
+          </p>
+        </div>
+        <button id="btnClosePerspectiveModal" type="button" class="btn-plum-ghost px-3 py-1.5 rounded-lg text-xs font-bold">إغلاق</button>
+      </div>
+
+      <!-- جسم النافذة -->
+      <div class="p-4 overflow-y-auto grid grid-cols-1 lg:grid-cols-12 gap-4 items-center">
+
+        <!-- يمين: الصورة الأصلية مع تحديد الزوايا الأربع -->
+        <div class="lg:col-span-7 flex flex-col items-center bg-plum-deep border border-mauve rounded-xl p-3">
+          <div class="w-full flex flex-wrap items-center justify-between gap-2 text-xs mb-2">
+            <span class="font-bold">1. حدود البطاقة المكتشفة:</span>
+            <div class="flex gap-1.5">
+              <button id="btnAutoDetectEdges" type="button" class="btn-cream px-3 py-1 rounded-lg text-xs">
+                كشف تلقائي ذكي للحواف
+              </button>
+              <button id="btnInsetCorners" type="button" class="btn-mauve px-2.5 py-1 rounded-lg text-xs">
+                تضييق للداخل
+              </button>
+              <button id="btnResetFullFrameCorners" type="button" class="btn-plum-ghost px-2.5 py-1 rounded-lg text-xs">
+                كامل الصورة
+              </button>
+            </div>
+          </div>
+
+          <div class="relative flex items-center justify-center w-full overflow-hidden rounded-lg bg-black/80 min-h-[300px]">
+            <canvas id="perspectiveSourceCanvas" class="max-w-full max-h-[240px] sm:max-h-[360px] w-auto h-auto cursor-crosshair"></canvas>
+          </div>
+          <p class="text-[11px] opacity-80 mt-2">اسحب النقاط الأربع (TL, TR, BR, BL) بالماوس أو اللمس لضبط الزوايا بدقة</p>
+        </div>
+
+        <!-- يسار: المعاينة الفورية بعد فرد المنظور والفلاتر -->
+        <div class="lg:col-span-5 flex flex-col items-center bg-plum-deep border border-mauve rounded-xl p-3.5 space-y-3">
+          <div class="w-full flex items-center justify-between text-xs">
+            <span class="font-bold">2. النتيجة بعد القص وفرد المنظور:</span>
+            <span class="text-[11px] font-extrabold num-ltr">1:1 True Scale</span>
+          </div>
+
+          <div class="p-3 bg-white rounded-xl border border-mauve flex items-center justify-center w-full min-h-[210px]">
+            <canvas id="perspectivePreviewCanvas" class="max-w-full h-auto rounded shadow-md bg-white"></canvas>
+          </div>
+
+          <div class="w-full space-y-1.5 text-xs">
+            <div class="font-bold">اختر فلتر المعالجة:</div>
+            <div class="grid grid-cols-2 gap-1.5">
+              <button type="button" data-modal-filter="original" class="modal-filter-btn py-2 px-2 rounded-lg text-xs font-bold">
+                أصلي (Original)
+              </button>
+              <button type="button" data-modal-filter="magic" class="modal-filter-btn py-2 px-2 rounded-lg text-xs font-bold">
+                Magic (تبييض الخلفية)
+              </button>
+              <button type="button" data-modal-filter="bw" class="modal-filter-btn py-2 px-2 rounded-lg text-xs font-bold">
+                أبيض وأسود حاد (B&amp;W)
+              </button>
+              <button type="button" data-modal-filter="gray" class="modal-filter-btn py-2 px-2 rounded-lg text-xs font-bold">
+                رمادي واضح
+              </button>
+            </div>
+          </div>
+
+          <button id="btnConfirmPerspectiveCrop" type="button" class="w-full btn-cream py-3 px-4 rounded-xl text-sm shadow-lg sticky bottom-0 z-20">
+            اعتماد القص وإدراج البطاقة في الورقة
+          </button>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- إشعار سريع (Toast) -->
+  <div id="toastBanner" class="no-print fixed bottom-4 left-4 z-50 hidden px-4 py-2.5 rounded-xl bg-cream-accent text-plum-dark text-xs font-extrabold shadow-2xl flex items-center gap-2">
+    <span class="w-2.5 h-2.5 rounded-full bg-white"></span>
+    <span id="toastMessageText">تمت العملية بنجاح</span>
+  </div>
+
+  <!-- =========================================================================
+       المنطق البرمجي الكامل والمفحوص لتطبيق "مستمسكات" (Mustamskat Engine v3)
+       ========================================================================= -->
+  <script>
+    (function () {
+      'use strict';
+
+      // 1. الثوابت والمقاييس الفيزيائية القياسية (1:1 Millimeter Constants)
+      const A4_WIDTH_MM = 210.0;
+      const A4_HEIGHT_MM = 297.0;
+
+      // هوامش Microsoft Word القياسية بالمليمتر
+      const WORD_MARGIN_PRESETS = {
+        narrow: { key: 'narrow', nameAr: 'ضيق', mm: 12.7 },     // 0.5 inch = 1.27 cm
+        moderate: { key: 'moderate', nameAr: 'متوسط', mm: 19.1 }, // 0.75 inch = 1.91 cm
+        normal: { key: 'normal', nameAr: 'عادي', mm: 25.4 }      // 1.0 inch = 2.54 cm
+      };
+
+      const CARD_SPECS = {
+        national_id: {
+          type: 'national_id',
+          titleAr: 'بطاقة وطنية موحدة',
+          widthMm: 86.0,
+          heightMm: 54.0
+        },
+        housing_card: {
+          type: 'housing_card',
+          titleAr: 'بطاقة سكن',
+          widthMm: 90.0,
+          heightMm: 60.0
+        }
+      };
+
+      let basePxPerMm = 3.2;
+      let zoomFactor = 1.0;
+
+      // الإعدادات الافتراضية المصفّرة عند فتح البرنامج (حسب الشرط 5 و 6)
+      const DEFAULT_CONFIG = {
+        officeName: 'مكتب مستمسكات للطباعة والاستنساخ',
+        marginPreset: 'narrow',
+        safeMarginMm: 12.7,
+        spacerMm: 6.0,
+        spreadMaxSides: true,   // تباعد الوجهين في أقصى طرفي الورقة
+        defaultFilterMode: 'original', // الفلتر الافتراضي "أصلي"
+        defaultBrightness: 100,        // السطوع 100%
+        defaultContrast: 100,          // التباين 100%
+        defaultThreshold: 128,
+        defaultSharpen: false,         // الحدة مصفرة افتراضياً
+        exportDpi: 300,
+        showMmGrid: true,
+        smartGuides: true,
+        showCropMarks: true,
+        showSafeMargin: true
+      };
+
+      // حالة التطبيق الحالية (تبدأ مصفّرة تماماً وبدون أي بطاقات مسبقة)
+      const state = {
+        sessionId: 'sess_' + Date.now(),
+        customerName: '',
+        officeName: DEFAULT_CONFIG.officeName,
+        marginPreset: DEFAULT_CONFIG.marginPreset,
+        safeMarginMm: DEFAULT_CONFIG.safeMarginMm,
+        spacerMm: DEFAULT_CONFIG.spacerMm,
+        spreadMaxSides: DEFAULT_CONFIG.spreadMaxSides,
+        defaultFilterMode: DEFAULT_CONFIG.defaultFilterMode,
+        defaultBrightness: DEFAULT_CONFIG.defaultBrightness,
+        defaultContrast: DEFAULT_CONFIG.defaultContrast,
+        defaultThreshold: DEFAULT_CONFIG.defaultThreshold,
+        defaultSharpen: DEFAULT_CONFIG.defaultSharpen,
+        exportDpi: DEFAULT_CONFIG.exportDpi,
+        showMmGrid: DEFAULT_CONFIG.showMmGrid,
+        smartGuides: DEFAULT_CONFIG.smartGuides,
+        showCropMarks: DEFAULT_CONFIG.showCropMarks,
+        showSafeMargin: DEFAULT_CONFIG.showSafeMargin,
+        selectedSlotId: null,
+        selectedSlotIds: [], // دعم التحديد المتعدد (Ctrl+A و Shift+RightClick)
+        slots: [],           // تبدأ الورقة فارغة تماماً (0 بطاقات)
+        pairCounter: 0
+      };
+
+      // سجل التراجع والإعادة (Undo / Redo History Stack لـ Ctrl+Z و Ctrl+Y)
+      const historyStack = {
+        undoList: [],
+        redoList: [],
+        maxDepth: 35
+      };
+
+      function pushUndoSnapshot() {
+        const snap = JSON.stringify({
+          slots: state.slots,
+          pairCounter: state.pairCounter,
+          safeMarginMm: state.safeMarginMm,
+          marginPreset: state.marginPreset,
+          spacerMm: state.spacerMm,
+          spreadMaxSides: state.spreadMaxSides
+        });
+        if (historyStack.undoList.length > 0 && historyStack.undoList[historyStack.undoList.length - 1] === snap) {
+          return;
+        }
+        historyStack.undoList.push(snap);
+        if (historyStack.undoList.length > historyStack.maxDepth) {
+          historyStack.undoList.shift();
+        }
+        historyStack.redoList = [];
+        updateUndoBadge();
+      }
+
+      function updateUndoBadge() {
+        const badge = document.getElementById('undoCountBadge');
+        if (badge) badge.textContent = `(${historyStack.undoList.length})`;
+      }
+
+      function performUndo() {
+        if (historyStack.undoList.length === 0) {
+          showToast('لا توجد خطوات سابقة للتراجع عنها');
+          return;
+        }
+        const currentSnap = JSON.stringify({
+          slots: state.slots,
+          pairCounter: state.pairCounter,
+          safeMarginMm: state.safeMarginMm,
+          marginPreset: state.marginPreset,
+          spacerMm: state.spacerMm,
+          spreadMaxSides: state.spreadMaxSides
+        });
+        historyStack.redoList.push(currentSnap);
+
+        const prevSnap = JSON.parse(historyStack.undoList.pop());
+        state.slots = prevSnap.slots || [];
+        state.pairCounter = prevSnap.pairCounter || 0;
+        state.safeMarginMm = prevSnap.safeMarginMm ?? 12.7;
+        state.marginPreset = prevSnap.marginPreset || 'narrow';
+        state.spacerMm = prevSnap.spacerMm ?? 6.0;
+        state.spreadMaxSides = prevSnap.spreadMaxSides ?? true;
+
+        if (!state.slots.some(s => s.slotId === state.selectedSlotId)) {
+          state.selectedSlotId = state.slots[0] ? state.slots[0].slotId : null;
+        }
+        state.selectedSlotIds = state.selectedSlotId ? [state.selectedSlotId] : [];
+
+        updateUndoBadge();
+        syncMarginUI();
+        updatePaperGeometry();
+        renderSlotsSidebarList();
+        syncInspectorToSelection();
+        showToast('تم التراجع عن آخر خطوة (Ctrl+Z)');
+      }
+
+      function performRedo() {
+        if (historyStack.redoList.length === 0) {
+          showToast('لا توجد خطوة للإعادة');
+          return;
+        }
+        const currentSnap = JSON.stringify({
+          slots: state.slots,
+          pairCounter: state.pairCounter,
+          safeMarginMm: state.safeMarginMm,
+          marginPreset: state.marginPreset,
+          spacerMm: state.spacerMm,
+          spreadMaxSides: state.spreadMaxSides
+        });
+        historyStack.undoList.push(currentSnap);
+
+        const nextSnap = JSON.parse(historyStack.redoList.pop());
+        state.slots = nextSnap.slots || [];
+        state.pairCounter = nextSnap.pairCounter || 0;
+        state.safeMarginMm = nextSnap.safeMarginMm ?? 12.7;
+        state.marginPreset = nextSnap.marginPreset || 'narrow';
+        state.spacerMm = nextSnap.spacerMm ?? 6.0;
+        state.spreadMaxSides = nextSnap.spreadMaxSides ?? true;
+
+        updateUndoBadge();
+        syncMarginUI();
+        updatePaperGeometry();
+        renderSlotsSidebarList();
+        syncInspectorToSelection();
+        showToast('تمت إعادة الخطوة (Ctrl+Y)');
+      }
+
+      const cropModalState = {
+        slotId: null,
+        sourceImage: null,
+        corners: [],
+        draggingCornerIndex: -1,
+        filterMode: 'original',
+        displayScale: 1
+      };
+
+      // -----------------------------------------------------------------------
+      // 2. طبقة قاعدة البيانات المحلية Realm DB (Electron Native + Browser Adapter)
+      // -----------------------------------------------------------------------
+      class LocalRealmDatabaseAdapter {
+        constructor() {
+          this.storageKey = 'mustamskat_realm_PrintSession_v1';
+          this.memoryStore = [];
+          this.isNativeElectronRealm = Boolean(
+            window.electronRealmBridge && window.electronRealmBridge.isElectron
+          );
+        }
+
+        async init() {
+          const badgeText = document.getElementById('realmEngineText');
+          if (badgeText) {
+            badgeText.textContent = this.isNativeElectronRealm ? 'Realm DB Native' : 'Realm DB متصلة';
+          }
+          await this.refreshBadgeCount();
+        }
+
+        async getAllSessions() {
+          if (this.isNativeElectronRealm) {
+            return await window.electronRealmBridge.getAllSessions();
+          }
+          try {
+            const raw = localStorage.getItem(this.storageKey);
+            if (raw) {
+              this.memoryStore = JSON.parse(raw);
+            }
+          } catch (e) {}
+          return this.memoryStore.slice().sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+        }
+
+        async saveSession(sessionPayload) {
+          if (this.isNativeElectronRealm) {
+            const res = await window.electronRealmBridge.saveSession(sessionPayload);
+            await this.refreshBadgeCount();
+            return res;
+          }
+          const list = await this.getAllSessions();
+          const now = new Date().toISOString();
+          const record = {
+            _id: sessionPayload._id || ('sess_' + Date.now()),
+            customerName: sessionPayload.customerName || 'معاملة بدون اسم',
+            spacerMm: Number(sessionPayload.spacerMm || 6),
+            safeMarginMm: Number(sessionPayload.safeMarginMm || 12.7),
+            createdAt: sessionPayload.createdAt || now,
+            updatedAt: now,
+            cards: sessionPayload.cards || []
+          };
+          const idx = list.findIndex(item => item._id === record._id);
+          if (idx >= 0) {
+            list[idx] = record;
+          } else {
+            list.unshift(record);
+          }
+          this.memoryStore = list;
+          try {
+            localStorage.setItem(this.storageKey, JSON.stringify(list));
+          } catch (e) {}
+          await this.refreshBadgeCount();
+          return { ok: true, session: record };
+        }
+
+        async deleteSession(sessionId) {
+          if (this.isNativeElectronRealm) {
+            const res = await window.electronRealmBridge.deleteSession(sessionId);
+            await this.refreshBadgeCount();
+            return res;
+          }
+          const list = await this.getAllSessions();
+          this.memoryStore = list.filter(item => item._id !== sessionId);
+          try {
+            localStorage.setItem(this.storageKey, JSON.stringify(this.memoryStore));
+          } catch (e) {}
+          await this.refreshBadgeCount();
+          return { ok: true };
+        }
+
+        async refreshBadgeCount() {
+          const list = await this.getAllSessions();
+          const badge = document.getElementById('realmCountBadge');
+          if (badge) badge.textContent = String(list.length);
+        }
+      }
+
+      const realmDB = new LocalRealmDatabaseAdapter();
+
+      // -----------------------------------------------------------------------
+      // 3. إدارة التبويبات والهوامش ومقاييس الورقة
+      // -----------------------------------------------------------------------
+      let toastTimer = null;
+      function showToast(msg) {
+        const banner = document.getElementById('toastBanner');
+        const txt = document.getElementById('toastMessageText');
+        if (!banner || !txt) return;
+        txt.textContent = msg;
+        banner.classList.remove('hidden');
+        if (toastTimer) clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => {
+          banner.classList.add('hidden');
+        }, 3000);
+      }
+
+      function switchSidebarTab(targetId) {
+        document.querySelectorAll('.sidebar-tab-btn').forEach(btn => {
+          btn.classList.toggle('active', btn.dataset.tabTarget === targetId);
+        });
+        document.querySelectorAll('.sidebar-tab-pane').forEach(pane => {
+          pane.classList.toggle('hidden', pane.id !== targetId);
+        });
+        if (targetId === 'tabRealm') {
+          renderRealmArchiveList();
+        }
+      }
+
+      function applyWordMarginPreset(presetKey, recordUndo = true) {
+        const preset = WORD_MARGIN_PRESETS[presetKey];
+        if (!preset) return;
+        if (recordUndo) pushUndoSnapshot();
+        state.marginPreset = preset.key;
+        state.safeMarginMm = preset.mm;
+        syncMarginUI();
+        if (state.slots.length > 0 && state.spreadMaxSides) {
+          autoArrangeAllSlots(false);
+        } else {
+          updatePaperGeometry();
+        }
+        showToast(`تم تطبيق هامش وورد: ${preset.nameAr} (${(preset.mm / 10).toFixed(2)} سم)`);
+      }
+
+      function syncMarginUI() {
+        const mm = state.safeMarginMm;
+        const cmStr = (mm / 10).toFixed(2);
+        const valTxt = document.getElementById('marginValueText');
+        if (valTxt) valTxt.textContent = `${cmStr} cm (${mm.toFixed(1)} mm)`;
+
+        const customLbl = document.getElementById('customMarginMmLabel');
+        if (customLbl) customLbl.textContent = `${mm.toFixed(1)} mm`;
+
+        const rng = document.getElementById('marginRangeInput');
+        if (rng) rng.value = mm;
+
+        const badge = document.getElementById('marginPresetBadge');
+        const presetObj = WORD_MARGIN_PRESETS[state.marginPreset];
+        if (badge) {
+          badge.textContent = presetObj
+            ? `هامش وورد: ${presetObj.nameAr} (${mm.toFixed(1)} mm)`
+            : `هامش مخصص (${mm.toFixed(1)} mm)`;
+        }
+
+        document.querySelectorAll('.margin-preset-btn').forEach(btn => {
+          const isCurrent = btn.dataset.marginPreset === state.marginPreset;
+          btn.className = isCurrent
+            ? 'margin-preset-btn btn-cream py-2 px-2 rounded-lg text-center'
+            : 'margin-preset-btn btn-plum-ghost py-2 px-2 rounded-lg text-center';
+        });
+      }
+
+      function getEffectivePxPerMm() {
+        return basePxPerMm * zoomFactor;
+      }
+
+      function updatePaperGeometry() {
+        const pxPerMm = getEffectivePxPerMm();
+        const paper = document.getElementById('a4PaperCanvas');
+        const safeBox = document.getElementById('safeMarginOverlay');
+        if (!paper || !safeBox) return;
+
+        paper.style.setProperty('--px-per-mm', String(pxPerMm));
+        paper.style.width = (A4_WIDTH_MM * pxPerMm) + 'px';
+        paper.style.height = (A4_HEIGHT_MM * pxPerMm) + 'px';
+        paper.classList.toggle('show-mm-grid', state.showMmGrid);
+
+        const mPx = state.safeMarginMm * pxPerMm;
+        safeBox.style.display = state.showSafeMargin ? 'block' : 'none';
+        safeBox.style.left = mPx + 'px';
+        safeBox.style.top = mPx + 'px';
+        safeBox.style.width = ((A4_WIDTH_MM - state.safeMarginMm * 2) * pxPerMm) + 'px';
+        safeBox.style.height = ((A4_HEIGHT_MM - state.safeMarginMm * 2) * pxPerMm) + 'px';
+
+        const zoomLbl = document.getElementById('zoomPercentLabel');
+        if (zoomLbl) zoomLbl.textContent = Math.round(zoomFactor * 100) + '%';
+
+        renderAllCardSlots();
+      }
+
+      // -----------------------------------------------------------------------
+      // 4. خوارزمية الكشف التلقائي الدقيق عن حواف البطاقة
+      // -----------------------------------------------------------------------
+      function medianValue(arr) {
+        if (!arr.length) return 0;
+        const sorted = arr.slice().sort((a, b) => a - b);
+        const mid = Math.floor(sorted.length / 2);
+        return sorted.length % 2 !== 0 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) * 0.5;
+      }
+
+      function computeOtsuThreshold(valuesU8) {
+        const hist = new Int32Array(256);
+        const total = valuesU8.length;
+        for (let i = 0; i < total; i++) hist[valuesU8[i]]++;
+
+        let sum = 0;
+        for (let t = 0; t < 256; t++) sum += t * hist[t];
+
+        let sumB = 0, wB = 0, maxVar = -1, threshold = 120;
+        for (let t = 0; t < 256; t++) {
+          wB += hist[t];
+          if (wB === 0) continue;
+          const wF = total - wB;
+          if (wF === 0) break;
+          sumB += t * hist[t];
+          const mB = sumB / wB;
+          const mF = (sum - sumB) / wF;
+          const betweenVar = wB * wF * (mB - mF) * (mB - mF);
+          if (betweenVar > maxVar) {
+            maxVar = betweenVar;
+            threshold = t;
+          }
+        }
+        return threshold;
+      }
+
+      function fitRobustLine1D(xs, ys) {
+        const n = xs.length;
+        if (n < 2) return { m: 0, c: ys[0] || 0 };
+
+        function ols(xArr, yArr) {
+          let sx = 0, sy = 0, sxx = 0, sxy = 0;
+          const len = xArr.length;
+          for (let i = 0; i < len; i++) {
+            sx += xArr[i];
+            sy += yArr[i];
+            sxx += xArr[i] * xArr[i];
+            sxy += xArr[i] * yArr[i];
+          }
+          const denom = len * sxx - sx * sx;
+          if (Math.abs(denom) < 1e-6) return { m: 0, c: sy / len };
+          const m = (len * sxy - sx * sy) / denom;
+          const c = (sy - m * sx) / len;
+          return { m, c };
+        }
+
+        const pass1 = ols(xs, ys);
+        const residuals = [];
+        for (let i = 0; i < n; i++) {
+          residuals.push(Math.abs(ys[i] - (pass1.m * xs[i] + pass1.c)));
+        }
+        const sortedRes = residuals.slice().sort((a, b) => a - b);
+        const cutoff = sortedRes[Math.floor(n * 0.72)] + 1.5;
+
+        const inX = [], inY = [];
+        for (let i = 0; i < n; i++) {
+          if (residuals[i] <= cutoff) {
+            inX.push(xs[i]);
+            inY.push(ys[i]);
+          }
+        }
+        return inX.length >= 2 ? ols(inX, inY) : pass1;
+      }
+
+      function detectCardCornersAutomatically(imgElement) {
+        const origW = imgElement.naturalWidth || imgElement.width;
+        const origH = imgElement.naturalHeight || imgElement.height;
+
+        const workW = 220;
+        const workH = Math.max(120, Math.round((origH / origW) * workW));
+        const offCanvas = document.createElement('canvas');
+        offCanvas.width = workW;
+        offCanvas.height = workH;
+        const ctx = offCanvas.getContext('2d');
+        ctx.drawImage(imgElement, 0, 0, workW, workH);
+        const rgba = ctx.getImageData(0, 0, workW, workH).data;
+
+        const numPixels = workW * workH;
+        const R = new Float32Array(numPixels);
+        const G = new Float32Array(numPixels);
+        const B = new Float32Array(numPixels);
+        const lum = new Float32Array(numPixels);
+        const sat = new Float32Array(numPixels);
+
+        for (let i = 0; i < numPixels; i++) {
+          const r = rgba[i * 4], g = rgba[i * 4 + 1], b = rgba[i * 4 + 2];
+          R[i] = r; G[i] = g; B[i] = b;
+          lum[i] = 0.299 * r + 0.587 * g + 0.114 * b;
+          const maxC = Math.max(r, g, b);
+          const minC = Math.min(r, g, b);
+          sat[i] = maxC > 0 ? ((maxC - minC) / maxC) * 255.0 : 0;
+        }
+
+        const mx = Math.max(3, Math.floor(workW * 0.05));
+        const my = Math.max(3, Math.floor(workH * 0.05));
+        const bR = [], bG = [], bB = [], bLum = [], bSat = [];
+
+        for (let y = 0; y < workH; y++) {
+          for (let x = 0; x < workW; x++) {
+            if (x < mx || x >= workW - mx || y < my || y >= workH - my) {
+              const idx = y * workW + x;
+              bR.push(R[idx]); bG.push(G[idx]); bB.push(B[idx]);
+              bLum.push(lum[idx]); bSat.push(sat[idx]);
+            }
+          }
+        }
+
+        const bgR = medianValue(bR), bgG = medianValue(bG), bgB = medianValue(bB);
+        const bgLum = medianValue(bLum), bgSat = medianValue(bSat);
+
+        const rawScore = new Float32Array(numPixels);
+        let maxScore = 1e-5;
+        for (let i = 0; i < numPixels; i++) {
+          const dColor = Math.hypot(R[i] - bgR, G[i] - bgG, B[i] - bgB);
+          const dLum = Math.abs(lum[i] - bgLum);
+          const dSat = Math.abs(sat[i] - bgSat);
+          const sc = 0.50 * dColor + 0.30 * dLum + 0.20 * dSat;
+          rawScore[i] = sc;
+          if (sc > maxScore) maxScore = sc;
+        }
+
+        const scoreU8 = new Uint8Array(numPixels);
+        for (let i = 0; i < numPixels; i++) {
+          scoreU8[i] = Math.min(255, Math.max(0, Math.round((rawScore[i] / maxScore) * 255)));
+        }
+
+        const otsuT = computeOtsuThreshold(scoreU8);
+        let mask = new Uint8Array(numPixels);
+        for (let i = 0; i < numPixels; i++) {
+          mask[i] = scoreU8[i] >= otsuT ? 1 : 0;
+        }
+
+        function morphBoxFilter(inputMask, radius, thresholdCount) {
+          const out = new Uint8Array(numPixels);
+          for (let y = radius; y < workH - radius; y++) {
+            for (let x = radius; x < workW - radius; x++) {
+              let sum = 0;
+              for (let dy = -radius; dy <= radius; dy++) {
+                const rowOffset = (y + dy) * workW + x;
+                for (let dx = -radius; dx <= radius; dx++) {
+                  sum += inputMask[rowOffset + dx];
+                }
+              }
+              out[y * workW + x] = sum >= thresholdCount ? 1 : 0;
+            }
+          }
+          return out;
+        }
+
+        mask = morphBoxFilter(mask, 2, 18);
+        mask = morphBoxFilter(mask, 2, 6);
+        mask = morphBoxFilter(mask, 2, 6);
+        mask = morphBoxFilter(mask, 2, 18);
+
+        const labels = new Int32Array(numPixels);
+        let currentLabel = 0, bestLabel = -1, bestArea = 0;
+        const queue = new Int32Array(numPixels);
+
+        for (let i = 0; i < numPixels; i++) {
+          if (mask[i] === 1 && labels[i] === 0) {
+            currentLabel++;
+            let head = 0, tail = 0;
+            queue[tail++] = i;
+            labels[i] = currentLabel;
+            let area = 0;
+
+            while (head < tail) {
+              const curr = queue[head++];
+              area++;
+              const cx = curr % workW;
+              const cy = Math.floor(curr / workW);
+              const neighbors = [];
+              if (cx > 0) neighbors.push(curr - 1);
+              if (cx < workW - 1) neighbors.push(curr + 1);
+              if (cy > 0) neighbors.push(curr - workW);
+              if (cy < workH - 1) neighbors.push(curr + workW);
+
+              for (let k = 0; k < neighbors.length; k++) {
+                const nb = neighbors[k];
+                if (mask[nb] === 1 && labels[nb] === 0) {
+                  labels[nb] = currentLabel;
+                  queue[tail++] = nb;
+                }
+              }
+            }
+
+            if (area > bestArea) {
+              bestArea = area;
+              bestLabel = currentLabel;
+            }
+          }
+        }
+
+        if (bestLabel === -1 || bestArea < numPixels * 0.06 || bestArea > numPixels * 0.94) {
+          const px = Math.round(origW * 0.025);
+          const py = Math.round(origH * 0.025);
+          return [
+            { x: px, y: py },
+            { x: origW - px, y: py },
+            { x: origW - px, y: origH - py },
+            { x: px, y: origH - py }
+          ];
+        }
+
+        const validCols = [];
+        for (let x = 0; x < workW; x++) {
+          let cnt = 0;
+          for (let y = 0; y < workH; y++) {
+            if (labels[y * workW + x] === bestLabel) cnt++;
+          }
+          if (cnt > workH * 0.12) validCols.push(x);
+        }
+
+        const validRows = [];
+        for (let y = 0; y < workH; y++) {
+          let cnt = 0;
+          for (let x = 0; x < workW; x++) {
+            if (labels[y * workW + x] === bestLabel) cnt++;
+          }
+          if (cnt > workW * 0.20) validRows.push(y);
+        }
+
+        if (validCols.length < 10 || validRows.length < 10) {
+          const px = Math.round(origW * 0.04);
+          const py = Math.round(origH * 0.04);
+          return [
+            { x: px, y: py },
+            { x: origW - px, y: py },
+            { x: origW - px, y: origH - py },
+            { x: px, y: origH - py }
+          ];
+        }
+
+        const cStart = validCols[Math.floor(validCols.length * 0.10)];
+        const cEnd = validCols[Math.floor(validCols.length * 0.90)];
+        const topX = [], topY = [], botX = [], botY = [];
+
+        for (let x = cStart; x <= cEnd; x++) {
+          let firstY = -1, lastY = -1;
+          for (let y = 0; y < workH; y++) {
+            if (labels[y * workW + x] === bestLabel) {
+              if (firstY === -1) firstY = y;
+              lastY = y;
+            }
+          }
+          if (firstY !== -1) {
+            topX.push(x); topY.push(firstY);
+            botX.push(x); botY.push(lastY);
+          }
+        }
+
+        const rStart = validRows[Math.floor(validRows.length * 0.12)];
+        const rEnd = validRows[Math.floor(validRows.length * 0.88)];
+        const leftY = [], leftX = [], rightY = [], rightX = [];
+
+        for (let y = rStart; y <= rEnd; y++) {
+          let firstX = -1, lastX = -1;
+          for (let x = 0; x < workW; x++) {
+            if (labels[y * workW + x] === bestLabel) {
+              if (firstX === -1) firstX = x;
+              lastX = x;
+            }
+          }
+          if (firstX !== -1) {
+            leftY.push(y); leftX.push(firstX);
+            rightY.push(y); rightX.push(lastX);
+          }
+        }
+
+        const lineTop = fitRobustLine1D(topX, topY);
+        const lineBot = fitRobustLine1D(botX, botY);
+        const lineLeft = fitRobustLine1D(leftY, leftX);
+        const lineRight = fitRobustLine1D(rightY, rightX);
+
+        function intersectHV(lineH, lineV) {
+          const denom = 1.0 - lineH.m * lineV.m;
+          const y = (lineH.m * lineV.c + lineH.c) / (Math.abs(denom) < 1e-6 ? 1e-6 : denom);
+          const x = lineV.m * y + lineV.c;
+          return { x, y };
+        }
+
+        const tl = intersectHV(lineTop, lineLeft);
+        const tr = intersectHV(lineTop, lineRight);
+        const br = intersectHV(lineBot, lineRight);
+        const bl = intersectHV(lineBot, lineLeft);
+
+        const scaleX = origW / workW;
+        const scaleY = origH / workH;
+
+        function clampPt(pt) {
+          return {
+            x: Math.max(0, Math.min(origW - 1, Math.round(pt.x * scaleX))),
+            y: Math.max(0, Math.min(origH - 1, Math.round(pt.y * scaleY)))
+          };
+        }
+
+        return [clampPt(tl), clampPt(tr), clampPt(br), clampPt(bl)];
+      }
+
+      // -----------------------------------------------------------------------
+      // 5. تصحيح المنظور الرباعي (Homography Warp) وفلاتر الوضوح
+      // -----------------------------------------------------------------------
+      function solveLinearSystem8x8(A, B) {
+        const n = 8;
+        for (let i = 0; i < n; i++) {
+          let maxRow = i;
+          let maxVal = Math.abs(A[i][i]);
+          for (let k = i + 1; k < n; k++) {
+            if (Math.abs(A[k][i]) > maxVal) {
+              maxVal = Math.abs(A[k][i]);
+              maxRow = k;
+            }
+          }
+          const tmpRow = A[i]; A[i] = A[maxRow]; A[maxRow] = tmpRow;
+          const tmpVal = B[i]; B[i] = B[maxRow]; B[maxRow] = tmpVal;
+
+          const pivot = A[i][i] || 1e-10;
+          for (let j = i; j < n; j++) A[i][j] /= pivot;
+          B[i] /= pivot;
+
+          for (let k = 0; k < n; k++) {
+            if (k !== i) {
+              const factor = A[k][i];
+              for (let j = i; j < n; j++) A[k][j] -= factor * A[i][j];
+              B[k] -= factor * B[i];
+            }
+          }
+        }
+        return B;
+      }
+
+      function computeDstToSrcHomography(dstW, dstH, quadCorners) {
+        const srcPts = [[0, 0], [dstW, 0], [dstW, dstH], [0, dstH]];
+        const dstPts = quadCorners.map(c => [c.x, c.y]);
+        const A = [], B = [];
+        for (let i = 0; i < 4; i++) {
+          const x = srcPts[i][0], y = srcPts[i][1];
+          const u = dstPts[i][0], v = dstPts[i][1];
+          A.push([x, y, 1, 0, 0, 0, -x * u, -y * u]);
+          B.push(u);
+          A.push([0, 0, 0, x, y, 1, -x * v, -y * v]);
+          B.push(v);
+        }
+        const h = solveLinearSystem8x8(A, B);
+        return [h[0], h[1], h[2], h[3], h[4], h[5], h[6], h[7], 1];
+      }
+
+      function warpPerspectiveCard(sourceImg, corners, cardType) {
+        const spec = CARD_SPECS[cardType] || CARD_SPECS.national_id;
+        const dstW = Math.round(spec.widthMm * 10);
+        const dstH = Math.round(spec.heightMm * 10);
+
+        const srcW = sourceImg.naturalWidth || sourceImg.width;
+        const srcH = sourceImg.naturalHeight || sourceImg.height;
+
+        const srcCanvas = document.createElement('canvas');
+        srcCanvas.width = srcW;
+        srcCanvas.height = srcH;
+        const srcCtx = srcCanvas.getContext('2d');
+        srcCtx.drawImage(sourceImg, 0, 0);
+        const srcData = srcCtx.getImageData(0, 0, srcW, srcH).data;
+
+        const dstCanvas = document.createElement('canvas');
+        dstCanvas.width = dstW;
+        dstCanvas.height = dstH;
+        const dstCtx = dstCanvas.getContext('2d');
+        const dstImgData = dstCtx.createImageData(dstW, dstH);
+        const dstData = dstImgData.data;
+
+        const H = computeDstToSrcHomography(dstW, dstH, corners);
+
+        for (let y = 0; y < dstH; y++) {
+          for (let x = 0; x < dstW; x++) {
+            const denom = H[6] * x + H[7] * y + H[8];
+            const srcX = (H[0] * x + H[1] * y + H[2]) / denom;
+            const srcY = (H[3] * x + H[4] * y + H[5]) / denom;
+            const dstIdx = (y * dstW + x) * 4;
+
+            if (srcX >= 0 && srcX < srcW - 1 && srcY >= 0 && srcY < srcH - 1) {
+              const x0 = Math.floor(srcX);
+              const y0 = Math.floor(srcY);
+              const dx = srcX - x0;
+              const dy = srcY - y0;
+
+              const i00 = (y0 * srcW + x0) * 4;
+              const i10 = i00 + 4;
+              const i01 = ((y0 + 1) * srcW + x0) * 4;
+              const i11 = i01 + 4;
+
+              for (let c = 0; c < 3; c++) {
+                const val =
+                  srcData[i00 + c] * (1 - dx) * (1 - dy) +
+                  srcData[i10 + c] * dx * (1 - dy) +
+                  srcData[i01 + c] * (1 - dx) * dy +
+                  srcData[i11 + c] * dx * dy;
+                dstData[dstIdx + c] = Math.min(255, Math.max(0, Math.round(val)));
+              }
+              dstData[dstIdx + 3] = 255;
+            } else {
+              dstData[dstIdx] = 255;
+              dstData[dstIdx + 1] = 255;
+              dstData[dstIdx + 2] = 255;
+              dstData[dstIdx + 3] = 255;
+            }
+          }
+        }
+
+        dstCtx.putImageData(dstImgData, 0, 0);
+        return dstCanvas;
+      }
+
+      function applyScannerEnhancementToCanvas(sourceCanvas, options) {
+        const w = sourceCanvas.width;
+        const h = sourceCanvas.height;
+        const outCanvas = document.createElement('canvas');
+        outCanvas.width = w;
+        outCanvas.height = h;
+        const ctx = outCanvas.getContext('2d');
+        ctx.drawImage(sourceCanvas, 0, 0);
+
+        const mode = options.filterMode || 'original';
+        const brightness = Number(options.brightness ?? 100);
+        const contrast = Number(options.contrast ?? 100);
+        const threshold = Number(options.threshold ?? 128);
+        const sharpen = Boolean(options.sharpen ?? false);
+
+        // إذا كان الوضع "أصلي" والسطوع 100% والتباين 100% والحدة غير مفعلة، أعد الصورة الأصلية الصافية تماماً
+        if (mode === 'original' && brightness === 100 && contrast === 100 && !sharpen) {
+          return outCanvas.toDataURL('image/jpeg', 0.95);
+        }
+
+        const imgData = ctx.getImageData(0, 0, w, h);
+        const data = imgData.data;
+
+        const brightFactor = brightness / 100;
+        const contrastFactor = (contrast / 100) * (contrast / 100);
+
+        for (let i = 0; i < data.length; i += 4) {
+          let r = data[i] * brightFactor;
+          let g = data[i + 1] * brightFactor;
+          let b = data[i + 2] * brightFactor;
+
+          r = (r - 128) * contrastFactor + 128;
+          g = (g - 128) * contrastFactor + 128;
+          b = (b - 128) * contrastFactor + 128;
+
+          const lum = 0.299 * r + 0.587 * g + 0.114 * b;
+
+          if (mode === 'bw') {
+            const bwVal = lum > threshold ? 255 : (lum < threshold * 0.65 ? 0 : Math.round(((lum - threshold * 0.65) / (threshold * 0.35)) * 255));
+            r = g = b = bwVal;
+          } else if (mode === 'gray') {
+            r = g = b = lum;
+          } else if (mode === 'magic') {
+            const whiteCutoff = Math.max(155, threshold + 25);
+            if (lum > whiteCutoff) {
+              const blend = Math.min(1, (lum - whiteCutoff) / (255 - whiteCutoff + 1));
+              r = r + (255 - r) * (0.72 + 0.28 * blend);
+              g = g + (255 - g) * (0.72 + 0.28 * blend);
+              b = b + (255 - b) * (0.72 + 0.28 * blend);
+            } else if (lum < 95) {
+              r *= 0.82; g *= 0.82; b *= 0.82;
+            }
+          }
+
+          data[i] = Math.min(255, Math.max(0, Math.round(r)));
+          data[i + 1] = Math.min(255, Math.max(0, Math.round(g)));
+          data[i + 2] = Math.min(255, Math.max(0, Math.round(b)));
+        }
+
+        if (sharpen) {
+          const copy = new Uint8ClampedArray(data);
+          const amount = 0.28;
+          for (let y = 1; y < h - 1; y++) {
+            for (let x = 1; x < w - 1; x++) {
+              const idx = (y * w + x) * 4;
+              const up = ((y - 1) * w + x) * 4;
+              const down = ((y + 1) * w + x) * 4;
+              const left = (y * w + (x - 1)) * 4;
+              const right = (y * w + (x + 1)) * 4;
+              for (let c = 0; c < 3; c++) {
+                const lap = 4 * copy[idx + c] - copy[up + c] - copy[down + c] - copy[left + c] - copy[right + c];
+                data[idx + c] = Math.min(255, Math.max(0, Math.round(copy[idx + c] + amount * lap)));
+              }
+            }
+          }
+        }
+
+        ctx.putImageData(imgData, 0, 0);
+        return outCanvas.toDataURL('image/jpeg', 0.95);
+      }
+
+      function reprocessSlotFilters(slot) {
+        if (!slot || !slot.warpedImageDataUrl) return Promise.resolve();
+        return new Promise((resolve) => {
+          const img = new Image();
+          img.onload = () => {
+            const c = document.createElement('canvas');
+            c.width = img.naturalWidth || img.width;
+            c.height = img.naturalHeight || img.height;
+            c.getContext('2d').drawImage(img, 0, 0);
+            slot.processedImageDataUrl = applyScannerEnhancementToCanvas(c, {
+              filterMode: slot.filterMode,
+              brightness: slot.brightness,
+              contrast: slot.contrast,
+              threshold: slot.threshold,
+              sharpen: slot.sharpen
+            });
+            resolve();
+          };
+          img.src = slot.warpedImageDataUrl;
+        });
+      }
+
+      // -----------------------------------------------------------------------
+      // 6. إدارة البطاقات وتباعد الوجهين لأقصى طرفي الورقة (شرط 4)
+      // -----------------------------------------------------------------------
+      function findNextPairPosition(widthMm, heightMm) {
+        const margin = state.safeMarginMm;
+        const spacer = state.spacerMm;
+        const rowIndex = Math.floor(state.slots.length / 2);
+
+        let startXLeft, startXRight;
+        if (state.spreadMaxSides) {
+          // تباعد الوجهين لأقصى حد: الوجه الأول في أقصى الطرف الأيمن والوجه الثاني في أقصى الطرف الأيسر ضمن الهامش
+          startXLeft = margin;
+          startXRight = A4_WIDTH_MM - margin - widthMm;
+        } else {
+          const totalPairWidth = widthMm * 2 + spacer;
+          startXLeft = Math.max(margin, (A4_WIDTH_MM - totalPairWidth) / 2);
+          startXRight = startXLeft + widthMm + spacer;
+        }
+
+        let yMm = margin + rowIndex * (heightMm + spacer);
+        if (yMm + heightMm > A4_HEIGHT_MM - margin) {
+          yMm = margin + ((rowIndex % 5) * (heightMm + spacer));
+        }
+
+        return {
+          frontX: Number(startXRight.toFixed(1)), // الوجه في أقصى الطرف الأيمن
+          frontY: Number(yMm.toFixed(1)),
+          backX: Number(startXLeft.toFixed(1)),   // الظهر في أقصى الطرف الأيسر
+          backY: Number(yMm.toFixed(1))
+        };
+      }
+
+      function addCardPair(cardType, recordUndo = true) {
+        if (recordUndo) pushUndoSnapshot();
+        const spec = CARD_SPECS[cardType] || CARD_SPECS.national_id;
+        state.pairCounter += 1;
+        const pairNum = state.pairCounter;
+        const pairId = 'pair_' + Date.now() + '_' + pairNum;
+        const pos = findNextPairPosition(spec.widthMm, spec.heightMm);
+
+        const frontSlot = {
+          slotId: 'slot_' + Date.now() + '_f_' + Math.random().toString(36).slice(2, 6),
+          pairId,
+          cardType: spec.type,
+          side: 'front',
+          label: spec.titleAr + ' #' + pairNum + ' (الوجه)',
+          xMm: pos.frontX,
+          yMm: pos.frontY,
+          widthMm: spec.widthMm,
+          heightMm: spec.heightMm,
+          rotation: 0,
+          rawImageDataUrl: null,
+          warpedImageDataUrl: null,
+          processedImageDataUrl: null,
+          filterMode: state.defaultFilterMode,
+          brightness: state.defaultBrightness,
+          contrast: state.defaultContrast,
+          threshold: state.defaultThreshold,
+          sharpen: state.defaultSharpen,
+          corners: null
+        };
+
+        const backSlot = {
+          slotId: 'slot_' + Date.now() + '_b_' + Math.random().toString(36).slice(2, 6),
+          pairId,
+          cardType: spec.type,
+          side: 'back',
+          label: spec.titleAr + ' #' + pairNum + ' (الظهر)',
+          xMm: pos.backX,
+          yMm: pos.backY,
+          widthMm: spec.widthMm,
+          heightMm: spec.heightMm,
+          rotation: 0,
+          rawImageDataUrl: null,
+          warpedImageDataUrl: null,
+          processedImageDataUrl: null,
+          filterMode: state.defaultFilterMode,
+          brightness: state.defaultBrightness,
+          contrast: state.defaultContrast,
+          threshold: state.defaultThreshold,
+          sharpen: state.defaultSharpen,
+          corners: null
+        };
+
+        state.slots.push(frontSlot, backSlot);
+        state.selectedSlotId = frontSlot.slotId;
+        state.selectedSlotIds = [frontSlot.slotId];
+        renderAllCardSlots();
+        renderSlotsSidebarList();
+        syncInspectorToSelection();
+        const gapMm = Number((frontSlot.xMm - (backSlot.xMm + backSlot.widthMm)).toFixed(1));
+        showToast(`تم إدراج زوج ${spec.titleAr} بتباعد أقصى بين الوجهين (${(gapMm / 10).toFixed(2)} سم)`);
+      }
+
+      function autoArrangeAllSlots(recordUndo = true) {
+        if (state.slots.length === 0) {
+          showToast('الورقة فارغة حالياً');
+          return;
+        }
+        if (recordUndo) pushUndoSnapshot();
+        const margin = state.safeMarginMm;
+        const spacer = state.spacerMm;
+        let currentY = margin;
+
+        for (let i = 0; i < state.slots.length; i += 2) {
+          const first = state.slots[i];
+          const second = state.slots[i + 1];
+          const rowHeight = Math.max(first ? first.heightMm : 54, second ? second.heightMm : 54);
+
+          if (second) {
+            if (state.spreadMaxSides) {
+              // أقصى تباعد: الوجه في أقصى يمين الصفحة والظهر في أقصى يسار الصفحة
+              first.xMm = Number((A4_WIDTH_MM - margin - first.widthMm).toFixed(1));
+              first.yMm = Number(currentY.toFixed(1));
+              first.rotation = 0;
+
+              second.xMm = Number(margin.toFixed(1));
+              second.yMm = Number(currentY.toFixed(1));
+              second.rotation = 0;
+            } else {
+              const pairW = first.widthMm + second.widthMm + spacer;
+              const startXLeft = Math.max(margin, (A4_WIDTH_MM - pairW) / 2);
+              first.xMm = Number((startXLeft + second.widthMm + spacer).toFixed(1));
+              first.yMm = Number(currentY.toFixed(1));
+              first.rotation = 0;
+
+              second.xMm = Number(startXLeft.toFixed(1));
+              second.yMm = Number(currentY.toFixed(1));
+              second.rotation = 0;
+            }
+          } else if (first) {
+            first.xMm = Number((A4_WIDTH_MM - margin - first.widthMm).toFixed(1));
+            first.yMm = Number(currentY.toFixed(1));
+            first.rotation = 0;
+          }
+          currentY += rowHeight + spacer;
+        }
+
+        renderAllCardSlots();
+        syncInspectorToSelection();
+        showToast('تم ترتيب البطاقات على طرفي الورقة بأقصى تباعد');
+      }
+
+      // -----------------------------------------------------------------------
+      // 7. رسم البطاقات ودعم التحديد المتعدد (Shift+RightClick و Ctrl+A) والسحب
+      // -----------------------------------------------------------------------
+      function renderAllCardSlots() {
+        const mount = document.getElementById('cardsMountLayer');
+        if (!mount) return;
+        mount.innerHTML = '';
+
+        const pxPerMm = getEffectivePxPerMm();
+
+        state.slots.forEach((slot) => {
+          const isPrimarySelected = state.selectedSlotId === slot.slotId;
+          const isMultiSelected = state.selectedSlotIds.includes(slot.slotId);
+
+          const el = document.createElement('div');
+          el.className = 'card-slot' +
+            (slot.cardType === 'housing_card' ? ' housing-type' : '') +
+            (slot.processedImageDataUrl ? ' has-image' : '') +
+            (isPrimarySelected ? ' selected' : (isMultiSelected ? ' multi-selected' : ''));
+          el.dataset.slotId = slot.slotId;
+
+          el.style.left = (slot.xMm * pxPerMm) + 'px';
+          el.style.top = (slot.yMm * pxPerMm) + 'px';
+          el.style.width = (slot.widthMm * pxPerMm) + 'px';
+          el.style.height = (slot.heightMm * pxPerMm) + 'px';
+          el.style.transform = `rotate(${slot.rotation || 0}deg)`;
+
+          if (state.showCropMarks) {
+            ['tl', 'tr', 'bl', 'br'].forEach(pos => {
+              const mark = document.createElement('span');
+              mark.className = 'crop-mark ' + pos;
+              el.appendChild(mark);
+            });
+          }
+
+          if (slot.processedImageDataUrl) {
+            const img = document.createElement('img');
+            img.src = slot.processedImageDataUrl;
+            img.alt = slot.label;
+            img.className = 'w-full h-full object-fill pointer-events-none select-none';
+            el.appendChild(img);
+
+            const badge = document.createElement('div');
+            badge.className = 'absolute -top-5 right-0 px-1.5 py-0.5 rounded bg-cream-accent text-plum-dark text-[9px] font-bold whitespace-nowrap pointer-events-none shadow';
+            badge.textContent = `${slot.label} (${(slot.widthMm / 10).toFixed(1)}×${(slot.heightMm / 10).toFixed(1)}cm)`;
+            if (!isPrimarySelected && !isMultiSelected) badge.classList.add('hidden');
+            el.appendChild(badge);
+          } else {
+            const inner = document.createElement('div');
+            inner.className = 'p-2 text-center pointer-events-none flex flex-col items-center justify-center gap-1';
+            inner.innerHTML = `
+              <div class="w-7 h-7 rounded-full bg-cream-accent text-plum-dark flex items-center justify-center">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                </svg>
+              </div>
+              <div class="text-[11px] font-extrabold leading-tight">${slot.label}</div>
+              <div class="text-[10px] font-bold num-ltr opacity-85">${(slot.widthMm / 10).toFixed(2)} × ${(slot.heightMm / 10).toFixed(2)} cm</div>
+              <div class="text-[9px] opacity-75">انقر لرفع صورة البطاقة</div>
+            `;
+            el.appendChild(inner);
+          }
+
+          const resizeHandle = document.createElement('div');
+          resizeHandle.className = 'resize-handle se';
+          resizeHandle.title = 'تغيير الحجم يدوياً';
+          resizeHandle.addEventListener('pointerdown', (ev) => {
+            ev.stopPropagation();
+            startSlotResize(ev, slot);
+          });
+          el.appendChild(resizeHandle);
+
+          // دعم الاختصار المطلوب: Shift + Right Click للتحديد / إضافة للتحديد المتعدد
+          el.addEventListener('contextmenu', (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+            if (ev.shiftKey) {
+              if (state.selectedSlotIds.includes(slot.slotId)) {
+                state.selectedSlotIds = state.selectedSlotIds.filter(id => id !== slot.slotId);
+                state.selectedSlotId = state.selectedSlotIds[0] || null;
+              } else {
+                state.selectedSlotIds.push(slot.slotId);
+                state.selectedSlotId = slot.slotId;
+              }
+              showToast(`تم تحديد ${state.selectedSlotIds.length} بطاقة (Shift + Right Click)`);
+            } else {
+              state.selectedSlotId = slot.slotId;
+              state.selectedSlotIds = [slot.slotId];
+              showToast(`تم تحديد: ${slot.label}`);
+            }
+            renderAllCardSlots();
+            renderSlotsSidebarList();
+            syncInspectorToSelection();
+          });
+
+          el.addEventListener('pointerdown', (ev) => {
+            if (ev.button === 2) return; // يُعالج في contextmenu لـ Shift + Right Click
+            if (ev.button !== 0) return;
+            startSlotDrag(ev, slot);
+          });
+
+          el.addEventListener('dragover', (ev) => ev.preventDefault());
+          el.addEventListener('drop', (ev) => {
+            ev.preventDefault();
+            const file = ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files[0];
+            if (file && file.type.startsWith('image/')) {
+              state.selectedSlotId = slot.slotId;
+              state.selectedSlotIds = [slot.slotId];
+              loadImageFileIntoSlot(file, slot);
+            }
+          });
+
+          mount.appendChild(el);
+        });
+
+        updateStatusBarCoordinates();
+      }
+
+      function startSlotDrag(ev, slot) {
+        ev.preventDefault();
+        const prevSelected = state.selectedSlotId;
+
+        if (ev.shiftKey) {
+          if (!state.selectedSlotIds.includes(slot.slotId)) {
+            state.selectedSlotIds.push(slot.slotId);
+          }
+          state.selectedSlotId = slot.slotId;
+        } else if (!state.selectedSlotIds.includes(slot.slotId)) {
+          state.selectedSlotId = slot.slotId;
+          state.selectedSlotIds = [slot.slotId];
+        } else {
+          state.selectedSlotId = slot.slotId;
+        }
+
+        switchSidebarTab('tabCard');
+        renderAllCardSlots();
+        renderSlotsSidebarList();
+        syncInspectorToSelection();
+
+        const startClientX = ev.clientX;
+        const startClientY = ev.clientY;
+        const origX = slot.xMm;
+        const origY = slot.yMm;
+        const pxPerMm = getEffectivePxPerMm();
+        let moved = false;
+        let undoRecorded = false;
+
+        const guideV = document.getElementById('smartGuideV');
+        const guideH = document.getElementById('smartGuideH');
+        const guideBadge = document.getElementById('smartGuideBadge');
+
+        function onPointerMove(moveEv) {
+          const dxPx = moveEv.clientX - startClientX;
+          const dyPx = moveEv.clientY - startClientY;
+          if (Math.abs(dxPx) > 3 || Math.abs(dyPx) > 3) {
+            if (!undoRecorded) {
+              pushUndoSnapshot();
+              undoRecorded = true;
+            }
+            moved = true;
+          }
+          if (!moved) return;
+
+          let nextX = origX + dxPx / pxPerMm;
+          let nextY = origY + dyPx / pxPerMm;
+
+          nextX = Math.max(0, Math.min(A4_WIDTH_MM - slot.widthMm, nextX));
+          nextY = Math.max(0, Math.min(A4_HEIGHT_MM - slot.heightMm, nextY));
+
+          let snappedV = null, snappedH = null, badgeInfo = null;
+
+          if (state.smartGuides) {
+            const snapTolMm = 1.6;
+            const slotCenterX = nextX + slot.widthMm / 2;
+            if (Math.abs(slotCenterX - A4_WIDTH_MM / 2) < snapTolMm) {
+              nextX = A4_WIDTH_MM / 2 - slot.widthMm / 2;
+              snappedV = A4_WIDTH_MM / 2;
+            }
+
+            for (const other of state.slots) {
+              if (other.slotId === slot.slotId) continue;
+
+              if (Math.abs(nextX - other.xMm) < snapTolMm) {
+                nextX = other.xMm;
+                snappedV = other.xMm;
+              }
+              const gapRight = nextX - (other.xMm + other.widthMm);
+              if (Math.abs(gapRight - state.spacerMm) < snapTolMm) {
+                nextX = other.xMm + other.widthMm + state.spacerMm;
+                snappedV = nextX;
+                badgeInfo = { xMm: nextX - state.spacerMm / 2, yMm: nextY, text: `${(state.spacerMm / 10).toFixed(2)} cm` };
+              }
+              const gapLeft = other.xMm - (nextX + slot.widthMm);
+              if (Math.abs(gapLeft - state.spacerMm) < snapTolMm) {
+                nextX = other.xMm - state.spacerMm - slot.widthMm;
+                snappedV = other.xMm;
+                badgeInfo = { xMm: other.xMm - state.spacerMm / 2, yMm: nextY, text: `${(state.spacerMm / 10).toFixed(2)} cm` };
+              }
+
+              if (Math.abs(nextY - other.yMm) < snapTolMm) {
+                nextY = other.yMm;
+                snappedH = other.yMm;
+              }
+              const gapDown = nextY - (other.yMm + other.heightMm);
+              if (Math.abs(gapDown - state.spacerMm) < snapTolMm) {
+                nextY = other.yMm + other.heightMm + state.spacerMm;
+                snappedH = nextY;
+                badgeInfo = { xMm: nextX + slot.widthMm / 2, yMm: nextY - state.spacerMm / 2, text: `${(state.spacerMm / 10).toFixed(2)} cm` };
+              }
+            }
+          }
+
+          slot.xMm = Number(nextX.toFixed(1));
+          slot.yMm = Number(nextY.toFixed(1));
+
+          const domEl = document.querySelector(`.card-slot[data-slot-id="${slot.slotId}"]`);
+          if (domEl) {
+            domEl.style.left = (slot.xMm * pxPerMm) + 'px';
+            domEl.style.top = (slot.yMm * pxPerMm) + 'px';
+          }
+
+          if (guideV) {
+            guideV.style.display = snappedV !== null ? 'block' : 'none';
+            if (snappedV !== null) guideV.style.left = (snappedV * pxPerMm) + 'px';
+          }
+          if (guideH) {
+            guideH.style.display = snappedH !== null ? 'block' : 'none';
+            if (snappedH !== null) guideH.style.top = (snappedH * pxPerMm) + 'px';
+          }
+          if (guideBadge) {
+            guideBadge.style.display = badgeInfo ? 'block' : 'none';
+            if (badgeInfo) {
+              guideBadge.style.left = (badgeInfo.xMm * pxPerMm) + 'px';
+              guideBadge.style.top = (badgeInfo.yMm * pxPerMm) + 'px';
+              guideBadge.textContent = badgeInfo.text;
+            }
+          }
+
+          syncInspectorToSelection();
+          updateStatusBarCoordinates();
+        }
+
+        function onPointerUp() {
+          window.removeEventListener('pointermove', onPointerMove);
+          window.removeEventListener('pointerup', onPointerUp);
+          if (guideV) guideV.style.display = 'none';
+          if (guideH) guideH.style.display = 'none';
+          if (guideBadge) guideBadge.style.display = 'none';
+
+          if (!moved && !ev.shiftKey && (!slot.processedImageDataUrl || prevSelected === slot.slotId)) {
+            triggerFileSelectForSlot(slot.slotId);
+          }
+        }
+
+        window.addEventListener('pointermove', onPointerMove);
+        window.addEventListener('pointerup', onPointerUp);
+      }
+
+      function startSlotResize(ev, slot) {
+        pushUndoSnapshot();
+        const startX = ev.clientX;
+        const startY = ev.clientY;
+        const origW = slot.widthMm;
+        const origH = slot.heightMm;
+        const pxPerMm = getEffectivePxPerMm();
+
+        function onMove(moveEv) {
+          const dwMm = (moveEv.clientX - startX) / pxPerMm;
+          const dhMm = (moveEv.clientY - startY) / pxPerMm;
+          slot.widthMm = Number(Math.max(30, Math.min(A4_WIDTH_MM - slot.xMm, origW + dwMm)).toFixed(1));
+          slot.heightMm = Number(Math.max(20, Math.min(A4_HEIGHT_MM - slot.yMm, origH + dhMm)).toFixed(1));
+          renderAllCardSlots();
+          syncInspectorToSelection();
+        }
+
+        function onUp() {
+          window.removeEventListener('pointermove', onMove);
+          window.removeEventListener('pointerup', onUp);
+        }
+
+        window.addEventListener('pointermove', onMove);
+        window.addEventListener('pointerup', onUp);
+      }
+
+      function updateStatusBarCoordinates() {
+        const statusEl = document.getElementById('statusCoordinates');
+        if (!statusEl) return;
+        if (state.slots.length === 0) {
+          statusEl.textContent = 'الصفحة فارغة (الوضع الافتراضي المصفر)';
+          return;
+        }
+        if (state.selectedSlotIds.length > 1) {
+          statusEl.textContent = `محدد حالياً: ${state.selectedSlotIds.length} بطاقات (Ctrl+A / Shift+RightClick)`;
+          return;
+        }
+        const sel = state.slots.find(s => s.slotId === state.selectedSlotId);
+        if (!sel) {
+          statusEl.textContent = `إجمالي البطاقات على الورقة: ${state.slots.length}`;
+          return;
+        }
+        statusEl.textContent =
+          `X: ${sel.xMm.toFixed(1)}mm | Y: ${sel.yMm.toFixed(1)}mm | ` +
+          `${(sel.widthMm / 10).toFixed(2)}×${(sel.heightMm / 10).toFixed(2)}cm | ${sel.rotation || 0}°`;
+      }
+
+      // -----------------------------------------------------------------------
+      // 8. تحديث اللوحة الجانبية (Inspector & Slots List)
+      // -----------------------------------------------------------------------
+      function renderSlotsSidebarList() {
+        const container = document.getElementById('slotsListContainer');
+        const countLbl = document.getElementById('slotsCountText');
+        if (!container || !countLbl) return;
+
+        countLbl.textContent = `${state.slots.length} مستطيل (${Math.ceil(state.slots.length / 2)} بطاقة)`;
+
+        if (state.slots.length === 0) {
+          container.innerHTML = `<div class="p-3 rounded-xl bg-plum-deep text-center text-xs opacity-75">الورقة فارغة حالياً</div>`;
+          return;
+        }
+
+        container.innerHTML = '';
+        state.slots.forEach((slot) => {
+          const isSelected = slot.slotId === state.selectedSlotId || state.selectedSlotIds.includes(slot.slotId);
+          const row = document.createElement('div');
+          row.className = `p-2 rounded-xl border text-xs flex items-center justify-between gap-2 cursor-pointer transition ${
+            isSelected ? 'bg-mauve-accent font-bold' : 'bg-plum-deep border-mauve hover:opacity-100'
+          }`;
+          row.innerHTML = `
+            <div class="truncate">
+              <div class="truncate text-[11px]">${slot.label}</div>
+              <div class="text-[10px] opacity-80 num-ltr">${(slot.widthMm / 10).toFixed(2)}×${(slot.heightMm / 10).toFixed(2)}cm | X:${slot.xMm}mm</div>
+            </div>
+            <span class="px-2 py-0.5 rounded text-[10px] font-extrabold ${
+              slot.processedImageDataUrl ? 'bg-cream-accent text-plum-dark' : 'bg-plum-main text-cream-main opacity-80'
+            }">${slot.processedImageDataUrl ? 'جاهزة' : 'فارغ'}</span>
+          `;
+          row.addEventListener('click', () => {
+            state.selectedSlotId = slot.slotId;
+            state.selectedSlotIds = [slot.slotId];
+            renderAllCardSlots();
+            renderSlotsSidebarList();
+            syncInspectorToSelection();
+            switchSidebarTab('tabCard');
+          });
+          container.appendChild(row);
+        });
+      }
+
+      function syncInspectorToSelection() {
+        const slot = state.slots.find(s => s.slotId === state.selectedSlotId);
+        const hint = document.getElementById('noSelectionHint');
+        const panel = document.getElementById('selectedInspectorPanel');
+        const badge = document.getElementById('selectedSlotBadge');
+
+        if (!slot) {
+          if (hint) hint.classList.remove('hidden');
+          if (panel) panel.classList.add('hidden');
+          if (badge) badge.textContent = 'غير محدد';
+          return;
+        }
+
+        if (hint) hint.classList.add('hidden');
+        if (panel) panel.classList.remove('hidden');
+        if (badge) {
+          badge.textContent = state.selectedSlotIds.length > 1
+            ? `${state.selectedSlotIds.length} بطاقات محددة`
+            : slot.label;
+        }
+
+        document.getElementById('inpSlotX').value = slot.xMm;
+        document.getElementById('inpSlotY').value = slot.yMm;
+        document.getElementById('inpSlotW').value = slot.widthMm;
+        document.getElementById('inpSlotH').value = slot.heightMm;
+        document.getElementById('inpSlotRotation').value = slot.rotation || 0;
+
+        document.getElementById('rngBrightness').value = slot.brightness ?? 100;
+        document.getElementById('lblBrightness').textContent = (slot.brightness ?? 100) + '%';
+
+        document.getElementById('rngContrast').value = slot.contrast ?? 100;
+        document.getElementById('lblContrast').textContent = (slot.contrast ?? 100) + '%';
+
+        document.getElementById('rngThreshold').value = slot.threshold ?? 128;
+        document.getElementById('lblThreshold').textContent = String(slot.threshold ?? 128);
+
+        document.getElementById('chkSharpenText').checked = Boolean(slot.sharpen ?? false);
+
+        const filterNames = {
+          original: 'أصلي (Original)',
+          magic: 'تبييض ذكي (Magic)',
+          bw: 'أبيض وأسود حاد',
+          gray: 'رمادي متوازن'
+        };
+        document.getElementById('activeFilterLabel').textContent = filterNames[slot.filterMode] || 'أصلي (Original)';
+
+        document.querySelectorAll('.filter-mode-btn').forEach(btn => {
+          const isCurrent = btn.dataset.filterMode === slot.filterMode;
+          btn.className = isCurrent
+            ? 'filter-mode-btn py-1.5 px-2 rounded-lg text-xs btn-cream'
+            : 'filter-mode-btn py-1.5 px-2 rounded-lg text-xs btn-plum-ghost';
+        });
+      }
+
+      // -----------------------------------------------------------------------
+      // 9. نافذة القص الذكي وتعديل الزوايا الأربع
+      // -----------------------------------------------------------------------
+      function triggerFileSelectForSlot(slotId) {
+        state.selectedSlotId = slotId;
+        const input = document.getElementById('cardImageInput');
+        if (input) {
+          input.value = '';
+          input.click();
+        }
+      }
+
+      function loadImageFileIntoSlot(file, slot) {
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          pushUndoSnapshot();
+          slot.rawImageDataUrl = ev.target.result;
+          openPerspectiveModalForSlot(slot, true);
+        };
+        reader.readAsDataURL(file);
+      }
+
+      function openPerspectiveModalForSlot(slot, runAutoDetect = false) {
+        if (!slot || !slot.rawImageDataUrl) {
+          triggerFileSelectForSlot(slot ? slot.slotId : state.selectedSlotId);
+          return;
+        }
+
+        const modal = document.getElementById('perspectiveModal');
+        const sizeLbl = document.getElementById('cropModalTargetSize');
+        if (sizeLbl) {
+          sizeLbl.textContent = `${(slot.widthMm / 10).toFixed(2)} × ${(slot.heightMm / 10).toFixed(2)} cm`;
+        }
+
+        cropModalState.slotId = slot.slotId;
+        cropModalState.filterMode = slot.filterMode || state.defaultFilterMode || 'original';
+
+        const img = new Image();
+        img.onload = () => {
+          cropModalState.sourceImage = img;
+          if (runAutoDetect || !slot.corners || slot.corners.length !== 4) {
+            cropModalState.corners = detectCardCornersAutomatically(img);
+          } else {
+            cropModalState.corners = slot.corners.map(c => ({ x: c.x, y: c.y }));
+          }
+          modal.classList.remove('hidden');
+          syncModalFilterButtons();
+          drawPerspectiveSourceCanvas();
+          updatePerspectiveLivePreview();
+        };
+        img.src = slot.rawImageDataUrl;
+      }
+
+      function syncModalFilterButtons() {
+        document.querySelectorAll('.modal-filter-btn').forEach(btn => {
+          const active = btn.dataset.modalFilter === cropModalState.filterMode;
+          btn.className = active
+            ? 'modal-filter-btn py-2 px-2 rounded-lg text-xs btn-cream'
+            : 'modal-filter-btn py-2 px-2 rounded-lg text-xs btn-plum-ghost';
+        });
+      }
+
+      function drawPerspectiveSourceCanvas() {
+        const canvas = document.getElementById('perspectiveSourceCanvas');
+        const img = cropModalState.sourceImage;
+        if (!canvas || !img) return;
+
+        const maxW = 540, maxH = 380;
+        const imgW = img.naturalWidth || img.width;
+        const imgH = img.naturalHeight || img.height;
+        const scale = Math.min(maxW / imgW, maxH / imgH, 1);
+        cropModalState.displayScale = scale;
+
+        canvas.width = Math.round(imgW * scale);
+        canvas.height = Math.round(imgH * scale);
+
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+        ctx.save();
+        ctx.fillStyle = 'rgba(35, 16, 38, 0.62)';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        const pts = cropModalState.corners.map(c => ({
+          x: c.x * scale,
+          y: c.y * scale
+        }));
+
+        ctx.globalCompositeOperation = 'destination-out';
+        ctx.beginPath();
+        ctx.moveTo(pts[0].x, pts[0].y);
+        ctx.lineTo(pts[1].x, pts[1].y);
+        ctx.lineTo(pts[2].x, pts[2].y);
+        ctx.lineTo(pts[3].x, pts[3].y);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(pts[0].x, pts[0].y);
+        ctx.lineTo(pts[1].x, pts[1].y);
+        ctx.lineTo(pts[2].x, pts[2].y);
+        ctx.lineTo(pts[3].x, pts[3].y);
+        ctx.closePath();
+        ctx.clip();
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        ctx.restore();
+
+        ctx.strokeStyle = '#F2E9D8';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.moveTo(pts[0].x, pts[0].y);
+        ctx.lineTo(pts[1].x, pts[1].y);
+        ctx.lineTo(pts[2].x, pts[2].y);
+        ctx.lineTo(pts[3].x, pts[3].y);
+        ctx.closePath();
+        ctx.stroke();
+
+        const cornerLabels = ['TL', 'TR', 'BR', 'BL'];
+        pts.forEach((p, idx) => {
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, 10, 0, Math.PI * 2);
+          ctx.fillStyle = '#5B3A62';
+          ctx.fill();
+          ctx.lineWidth = 2.5;
+          ctx.strokeStyle = '#F2E9D8';
+          ctx.stroke();
+
+          ctx.fillStyle = '#F2E9D8';
+          ctx.font = 'bold 9px Inter, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(cornerLabels[idx], p.x, p.y);
+        });
+      }
+
+      function updatePerspectiveLivePreview() {
+        const previewCanvas = document.getElementById('perspectivePreviewCanvas');
+        const slot = state.slots.find(s => s.slotId === cropModalState.slotId);
+        if (!previewCanvas || !slot || !cropModalState.sourceImage) return;
+
+        const warpedCanvas = warpPerspectiveCard(
+          cropModalState.sourceImage,
+          cropModalState.corners,
+          slot.cardType
+        );
+
+        const enhancedDataUrl = applyScannerEnhancementToCanvas(warpedCanvas, {
+          filterMode: cropModalState.filterMode,
+          brightness: slot.brightness ?? 100,
+          contrast: slot.contrast ?? 100,
+          threshold: slot.threshold ?? 128,
+          sharpen: slot.sharpen ?? false
+        });
+
+        const previewImg = new Image();
+        previewImg.onload = () => {
+          previewCanvas.width = warpedCanvas.width;
+          previewCanvas.height = warpedCanvas.height;
+          previewCanvas.getContext('2d').drawImage(previewImg, 0, 0);
+        };
+        previewImg.src = enhancedDataUrl;
+      }
+
+      function initPerspectiveCanvasDragging() {
+        const canvas = document.getElementById('perspectiveSourceCanvas');
+        if (!canvas) return;
+
+        function getCanvasCoords(ev) {
+          const rect = canvas.getBoundingClientRect();
+          const scaleX = canvas.width / rect.width;
+          const scaleY = canvas.height / rect.height;
+          return {
+            x: (ev.clientX - rect.left) * scaleX,
+            y: (ev.clientY - rect.top) * scaleY
+          };
+        }
+
+        canvas.addEventListener('pointerdown', (ev) => {
+          const pt = getCanvasCoords(ev);
+          const scale = cropModalState.displayScale || 1;
+          let bestIdx = -1, bestDist = 26;
+
+          cropModalState.corners.forEach((c, idx) => {
+            const dist = Math.hypot(c.x * scale - pt.x, c.y * scale - pt.y);
+            if (dist < bestDist) {
+              bestDist = dist;
+              bestIdx = idx;
+            }
+          });
+
+          if (bestIdx >= 0) {
+            cropModalState.draggingCornerIndex = bestIdx;
+            canvas.setPointerCapture(ev.pointerId);
+          }
+        });
+
+        canvas.addEventListener('pointermove', (ev) => {
+          if (cropModalState.draggingCornerIndex < 0) return;
+          const pt = getCanvasCoords(ev);
+          const scale = cropModalState.displayScale || 1;
+          const img = cropModalState.sourceImage;
+          if (!img) return;
+
+          const imgW = img.naturalWidth || img.width;
+          const imgH = img.naturalHeight || img.height;
+
+          cropModalState.corners[cropModalState.draggingCornerIndex] = {
+            x: Math.max(0, Math.min(imgW, Math.round(pt.x / scale))),
+            y: Math.max(0, Math.min(imgH, Math.round(pt.y / scale)))
+          };
+
+          drawPerspectiveSourceCanvas();
+        });
+
+        canvas.addEventListener('pointerup', () => {
+          if (cropModalState.draggingCornerIndex >= 0) {
+            cropModalState.draggingCornerIndex = -1;
+            updatePerspectiveLivePreview();
+          }
+        });
+      }
+
+      // -----------------------------------------------------------------------
+      // 10. تصفير البرنامج بالكامل للوضع الافتراضي (الشرط 5)
+      // -----------------------------------------------------------------------
+      function resetApplicationToFactoryDefaults(recordUndo = false) {
+        if (recordUndo && state.slots.length > 0) pushUndoSnapshot();
+
+        state.sessionId = 'sess_' + Date.now();
+        state.customerName = '';
+        state.officeName = DEFAULT_CONFIG.officeName;
+        state.marginPreset = DEFAULT_CONFIG.marginPreset;
+        state.safeMarginMm = DEFAULT_CONFIG.safeMarginMm;
+        state.spacerMm = DEFAULT_CONFIG.spacerMm;
+        state.spreadMaxSides = DEFAULT_CONFIG.spreadMaxSides;
+        state.defaultFilterMode = DEFAULT_CONFIG.defaultFilterMode; // 'original'
+        state.defaultBrightness = DEFAULT_CONFIG.defaultBrightness; // 100
+        state.defaultContrast = DEFAULT_CONFIG.defaultContrast;     // 100
+        state.defaultThreshold = DEFAULT_CONFIG.defaultThreshold;   // 128
+        state.defaultSharpen = DEFAULT_CONFIG.defaultSharpen;       // false
+        state.exportDpi = DEFAULT_CONFIG.exportDpi;                 // 300
+        state.showMmGrid = DEFAULT_CONFIG.showMmGrid;
+        state.smartGuides = DEFAULT_CONFIG.smartGuides;
+        state.showCropMarks = DEFAULT_CONFIG.showCropMarks;
+        state.showSafeMargin = DEFAULT_CONFIG.showSafeMargin;
+
+        state.slots = [];
+        state.pairCounter = 0;
+        state.selectedSlotId = null;
+        state.selectedSlotIds = [];
+
+        // مزامنة جميع عناصر الواجهة مع الوضع الافتراضي المصفر
+        document.getElementById('customerNameInput').value = '';
+        document.getElementById('activeSessionIdLabel').textContent = '#جديدة';
+        document.getElementById('spacerRangeInput').value = state.spacerMm;
+        document.getElementById('spacerValueText').textContent = `${(state.spacerMm / 10).toFixed(2)} cm (${state.spacerMm} mm)`;
+        document.getElementById('chkSpreadMaxSides').checked = state.spreadMaxSides;
+
+        document.getElementById('setOfficeName').value = state.officeName;
+        document.getElementById('setDefaultMarginPreset').value = state.marginPreset;
+        document.getElementById('setDefaultFilterMode').value = state.defaultFilterMode;
+        document.getElementById('setDefaultBrightness').value = state.defaultBrightness;
+        document.getElementById('setDefaultContrast').value = state.defaultContrast;
+        document.getElementById('setExportDpi').value = String(state.exportDpi);
+
+        document.getElementById('chkShowMmGrid').checked = state.showMmGrid;
+        document.getElementById('chkSmartGuides').checked = state.smartGuides;
+        document.getElementById('chkCropMarks').checked = state.showCropMarks;
+        document.getElementById('chkShowSafeMargin').checked = state.showSafeMargin;
+
+        document.getElementById('rngBrightness').value = 100;
+        document.getElementById('lblBrightness').textContent = '100%';
+        document.getElementById('rngContrast').value = 100;
+        document.getElementById('lblContrast').textContent = '100%';
+        document.getElementById('rngThreshold').value = 128;
+        document.getElementById('lblThreshold').textContent = '128';
+        document.getElementById('chkSharpenText').checked = false;
+        document.getElementById('activeFilterLabel').textContent = 'أصلي (Original)';
+
+        syncMarginUI();
+        updatePaperGeometry();
+        renderSlotsSidebarList();
+        syncInspectorToSelection();
+      }
+
+      // توليد نماذج تجريبية عند الضغط على زر "إدراج نموذج تجريبي" فقط
+      function generateSyntheticTiltedCardImage(cardType, side, personName, idNumber) {
+        const c = document.createElement('canvas');
+        c.width = 720;
+        c.height = 920;
+        const ctx = c.getContext('2d');
+
+        const bgGrad = ctx.createLinearGradient(0, 0, 720, 920);
+        bgGrad.addColorStop(0, '#7c3f16');
+        bgGrad.addColorStop(0.5, '#68320f');
+        bgGrad.addColorStop(1, '#522509');
+        ctx.fillStyle = bgGrad;
+        ctx.fillRect(0, 0, 720, 920);
+
+        ctx.save();
+        ctx.translate(360, 470);
+        ctx.rotate((side === 'front' ? -2.4 : 2.1) * Math.PI / 180);
+
+        const cardW = 580;
+        const cardH = cardType === 'national_id' ? 364 : 386;
+        const x0 = -cardW / 2, y0 = -cardH / 2;
+
+        ctx.fillStyle = '#f4f6fb';
+        ctx.fillRect(x0, y0, cardW, cardH);
+
+        ctx.fillStyle = cardType === 'national_id' ? '#1e3a8a' : '#065f46';
+        ctx.fillRect(x0 + 14, y0 + 14, cardW - 28, 56);
+
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 20px Cairo, sans-serif';
+        ctx.textAlign = 'center';
+        const headerTitle = cardType === 'national_id'
+          ? 'جمهورية العراق - البطاقة الوطنية الموحدة'
+          : 'جمهورية العراق - بطاقة السكن الرسمية';
+        ctx.fillText(headerTitle + (side === 'front' ? ' (الوجه)' : ' (الظهر)'), 0, y0 + 49);
+
+        ctx.fillStyle = '#0f172a';
+        ctx.textAlign = 'right';
+        ctx.font = 'bold 19px Cairo, sans-serif';
+        ctx.fillText('الاسم: ' + personName, x0 + cardW - 30, y0 + 125);
+        ctx.fillText('الرقم: ' + idNumber, x0 + cardW - 30, y0 + 175);
+
+        ctx.restore();
+        return c.toDataURL('image/jpeg', 0.92);
+      }
+
+      async function loadDemoSamples() {
+        pushUndoSnapshot();
+        state.slots = [];
+        state.pairCounter = 0;
+
+        addCardPair('national_id', false);
+        addCardPair('housing_card', false);
+
+        const demoConfigs = [
+          { slot: state.slots[0], type: 'national_id', side: 'front', name: 'شيماء عبيد محمد الخفاجي', num: '198038301418' },
+          { slot: state.slots[1], type: 'national_id', side: 'back', name: 'شيماء عبيد محمد الخفاجي', num: '198038301418' },
+          { slot: state.slots[2], type: 'housing_card', side: 'front', name: 'شيماء عبيد محمد الخفاجي', num: 'BBL-58315' },
+          { slot: state.slots[3], type: 'housing_card', side: 'back', name: 'شيماء عبيد محمد الخفاجي', num: 'BBL-58315' }
+        ];
+
+        for (const item of demoConfigs) {
+          const rawUrl = generateSyntheticTiltedCardImage(item.type, item.side, item.name, item.num);
+          item.slot.rawImageDataUrl = rawUrl;
+          await new Promise((resolve) => {
+            const img = new Image();
+            img.onload = () => {
+              const corners = detectCardCornersAutomatically(img);
+              item.slot.corners = corners;
+              const warped = warpPerspectiveCard(img, corners, item.type);
+              item.slot.warpedImageDataUrl = warped.toDataURL('image/jpeg', 0.95);
+              item.slot.processedImageDataUrl = applyScannerEnhancementToCanvas(warped, {
+                filterMode: item.slot.filterMode,
+                brightness: item.slot.brightness,
+                contrast: item.slot.contrast,
+                threshold: item.slot.threshold,
+                sharpen: item.slot.sharpen
+              });
+              resolve();
+            };
+            img.src = rawUrl;
+          });
+        }
+
+        renderAllCardSlots();
+        renderSlotsSidebarList();
+        syncInspectorToSelection();
+        showToast('تم إدراج النموذج التجريبي');
+      }
+
+      // -----------------------------------------------------------------------
+      // 11. محرك التصدير والطباعة المباشرة
+      // -----------------------------------------------------------------------
+      async function renderA4SheetHighResCanvas(dpi = state.exportDpi || 300) {
+        const pxPerMm = dpi / 25.4;
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(A4_WIDTH_MM * pxPerMm);
+        canvas.height = Math.round(A4_HEIGHT_MM * pxPerMm);
+        const ctx = canvas.getContext('2d');
+
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        for (const slot of state.slots) {
+          if (!slot.processedImageDataUrl) continue;
+
+          await new Promise((resolve) => {
+            const img = new Image();
+            img.onload = () => {
+              const xPx = slot.xMm * pxPerMm;
+              const yPx = slot.yMm * pxPerMm;
+              const wPx = slot.widthMm * pxPerMm;
+              const hPx = slot.heightMm * pxPerMm;
+
+              ctx.save();
+              ctx.translate(xPx + wPx / 2, yPx + hPx / 2);
+              ctx.rotate(((slot.rotation || 0) * Math.PI) / 180);
+              ctx.drawImage(img, -wPx / 2, -hPx / 2, wPx, hPx);
+
+              if (state.showCropMarks) {
+                ctx.strokeStyle = 'rgba(91, 58, 98, 0.45)';
+                ctx.lineWidth = 1.5;
+                const mLen = 3 * pxPerMm;
+                const hw = wPx / 2, hh = hPx / 2;
+                ctx.beginPath();
+                ctx.moveTo(-hw, -hh - mLen); ctx.lineTo(-hw, -hh - 2);
+                ctx.moveTo(-hw - mLen, -hh); ctx.lineTo(-hw - 2, -hh);
+                ctx.moveTo(hw, -hh - mLen); ctx.lineTo(hw, -hh - 2);
+                ctx.moveTo(hw + mLen, -hh); ctx.lineTo(hw + 2, -hh);
+                ctx.moveTo(-hw, hh + mLen); ctx.lineTo(-hw, hh + 2);
+                ctx.moveTo(-hw - mLen, hh); ctx.lineTo(-hw - 2, hh);
+                ctx.moveTo(hw, hh + mLen); ctx.lineTo(hw, hh + 2);
+                ctx.moveTo(hw + mLen, hh); ctx.lineTo(hw + 2, hh);
+                ctx.stroke();
+              }
+
+              ctx.restore();
+              resolve();
+            };
+            img.onerror = () => resolve();
+            img.src = slot.processedImageDataUrl;
+          });
+        }
+
+        return canvas;
+      }
+
+      function triggerDownloadBlob(blob, filename) {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 4000);
+      }
+
+      async function exportSheetAsPdf() {
+        showToast(`جارٍ تصدير ملف PDF قياسي (1:1 - ${state.exportDpi} DPI)...`);
+        const hiCanvas = await renderA4SheetHighResCanvas(state.exportDpi);
+        const imgData = hiCanvas.toDataURL('image/jpeg', 0.96);
+
+        if (window.jspdf && window.jspdf.jsPDF) {
+          const { jsPDF } = window.jspdf;
+          const pdf = new jsPDF({
+            orientation: 'portrait',
+            unit: 'mm',
+            format: [210, 297],
+            compress: true
+          });
+          pdf.addImage(imgData, 'JPEG', 0, 0, 210, 297);
+          pdf.save(`Mustamskat_A4_${Date.now()}.pdf`);
+          showToast('تم حفظ ملف PDF بمقاس A4 الحقيقي (210×297 ملم)');
+        }
+      }
+
+      async function exportSheetAsImage(format = 'png') {
+        showToast(`جارٍ تصدير صورة ${format.toUpperCase()} بدقة ${state.exportDpi} DPI...`);
+        const hiCanvas = await renderA4SheetHighResCanvas(state.exportDpi);
+        const mime = format === 'jpg' ? 'image/jpeg' : 'image/png';
+        hiCanvas.toBlob((blob) => {
+          if (blob) {
+            triggerDownloadBlob(blob, `Mustamskat_A4_${state.exportDpi}DPI_${Date.now()}.${format}`);
+            showToast(`تم تنزيل صورة ${format.toUpperCase()} بنجاح`);
+          }
+        }, mime, 0.95);
+      }
+
+      async function exportSheetAsDocx() {
+        if (!window.JSZip) return;
+        showToast('جارٍ توليد مستند وورد (.DOCX) بأبعاد 1:1...');
+
+        const zip = new window.JSZip();
+        const hiCanvas = await renderA4SheetHighResCanvas(state.exportDpi);
+        const fullSheetBase64 = hiCanvas.toDataURL('image/jpeg', 0.95).split(',')[1];
+        zip.file('word/media/a4_sheet.jpg', fullSheetBase64, { base64: true });
+
+        const pageCx = 210 * 36000;
+        const pageCy = 297 * 36000;
+
+        zip.file('[Content_Types].xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Default Extension="jpg" ContentType="image/jpeg"/>
+  <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+</Types>`);
+
+        zip.file('_rels/.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+</Relationships>`);
+
+        zip.file('word/_rels/document.xml.rels', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rIdSheet1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/a4_sheet.jpg"/>
+</Relationships>`);
+
+        zip.file('word/document.xml', `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+            xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+            xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
+            xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+            xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">
+  <w:body>
+    <w:p>
+      <w:r>
+        <w:drawing>
+          <wp:inline distT="0" distB="0" distL="0" distR="0">
+            <wp:extent cx="${pageCx}" cy="${pageCy}"/>
+            <wp:docPr id="1" name="MustamskatA4Sheet"/>
+            <a:graphic>
+              <a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">
+                <pic:pic>
+                  <pic:nvPicPr><pic:cNvPr id="1" name="a4_sheet.jpg"/><pic:cNvPicPr/></pic:nvPicPr>
+                  <pic:blipFill><a:blip r:embed="rIdSheet1"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill>
+                  <pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${pageCx}" cy="${pageCy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr>
+                </pic:pic>
+              </a:graphicData>
+            </a:graphic>
+          </wp:inline>
+        </w:drawing>
+      </w:r>
+    </w:p>
+    <w:sectPr>
+      <w:pgSz w="11906" h="16838"/>
+      <w:pgMar top="0" right="0" bottom="0" left="0" header="0" footer="0" gutter="0"/>
+    </w:sectPr>
+  </w:body>
+</w:document>`);
+
+        const blob = await zip.generateAsync({
+          type: 'blob',
+          mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        });
+        triggerDownloadBlob(blob, `Mustamskat_A4_${Date.now()}.docx`);
+        showToast('تم تصدير ملف وورد (.DOCX) بنجاح');
+      }
+
+      async function directPrintA4Sheet() {
+        showToast('جارٍ تجهيز الطباعة المباشرة بمقاس A4 (1:1)...');
+        const hiCanvas = await renderA4SheetHighResCanvas(state.exportDpi);
+        const dataUrl = hiCanvas.toDataURL('image/jpeg', 0.98);
+
+        const printMount = document.getElementById('printMountArea');
+        if (printMount) {
+          printMount.innerHTML = `<img src="${dataUrl}" alt="Mustamskat A4 Direct Print" />`;
+        }
+
+        if (window.electronRealmBridge && window.electronRealmBridge.isElectron) {
+          await window.electronRealmBridge.directPrintA4({ silent: false });
+          return;
+        }
+        setTimeout(() => window.print(), 180);
+      }
+
+      // -----------------------------------------------------------------------
+      // 12. إدارة الحفظ والأرشيف في Realm DB
+      // -----------------------------------------------------------------------
+      async function saveCurrentSessionToRealm() {
+        const nameInp = document.getElementById('customerNameInput');
+        const customerName = (nameInp && nameInp.value.trim()) || ('معاملة زبون - ' + new Date().toLocaleTimeString('ar-IQ'));
+
+        const payload = {
+          _id: state.sessionId,
+          customerName,
+          spacerMm: state.spacerMm,
+          safeMarginMm: state.safeMarginMm,
+          cards: state.slots.map(s => ({ ...s }))
+        };
+
+        const res = await realmDB.saveSession(payload);
+        if (res && res.ok) {
+          document.getElementById('activeSessionIdLabel').textContent = '#' + state.sessionId.slice(-6);
+          await renderRealmArchiveList();
+          showToast('تم حفظ المعاملة في قاعدة بيانات Realm DB');
+        }
+      }
+
+      async function renderRealmArchiveList() {
+        const listEl = document.getElementById('realmSessionsList');
+        if (!listEl) return;
+        const sessions = await realmDB.getAllSessions();
+
+        if (!sessions || sessions.length === 0) {
+          listEl.innerHTML = `<div class="p-4 text-center rounded-xl bg-plum-deep text-xs opacity-75">لا توجد معاملات محفوظة بعد</div>`;
+          return;
+        }
+
+        listEl.innerHTML = '';
+        sessions.forEach((sess) => {
+          const cardCount = (sess.cards || []).length;
+          const dateStr = sess.updatedAt ? new Date(sess.updatedAt).toLocaleString('ar-IQ') : '';
+          const item = document.createElement('div');
+          item.className = 'p-3 rounded-xl bg-plum-deep border border-mauve space-y-2 text-xs';
+          item.innerHTML = `
+            <div class="font-extrabold">${sess.customerName}</div>
+            <div class="text-[10px] opacity-80">العناصر: ${cardCount} | ${dateStr}</div>
+            <div class="flex gap-2 pt-1">
+              <button type="button" data-load-id="${sess._id}" class="flex-1 btn-cream py-1.5 px-2 rounded-lg text-xs">فتح في الورقة</button>
+              <button type="button" data-del-id="${sess._id}" class="btn-plum-ghost py-1.5 px-2.5 rounded-lg text-xs">حذف</button>
+            </div>
+          `;
+
+          item.querySelector(`[data-load-id="${sess._id}"]`).addEventListener('click', () => {
+            pushUndoSnapshot();
+            state.sessionId = sess._id;
+            state.customerName = sess.customerName;
+            state.spacerMm = Number(sess.spacerMm || 6);
+            state.safeMarginMm = Number(sess.safeMarginMm || 12.7);
+            state.slots = (sess.cards || []).map(c => ({ ...c }));
+            state.selectedSlotId = state.slots[0] ? state.slots[0].slotId : null;
+            state.selectedSlotIds = state.selectedSlotId ? [state.selectedSlotId] : [];
+
+            document.getElementById('customerNameInput').value = state.customerName;
+            document.getElementById('spacerRangeInput').value = state.spacerMm;
+            document.getElementById('spacerValueText').textContent = `${(state.spacerMm / 10).toFixed(2)} cm (${state.spacerMm} mm)`;
+            document.getElementById('activeSessionIdLabel').textContent = '#' + state.sessionId.slice(-6);
+
+            syncMarginUI();
+            updatePaperGeometry();
+            renderSlotsSidebarList();
+            syncInspectorToSelection();
+            showToast('تم استرجاع معاملة "' + state.customerName + '"');
+          });
+
+          item.querySelector(`[data-del-id="${sess._id}"]`).addEventListener('click', async () => {
+            await realmDB.deleteSession(sess._id);
+            await renderRealmArchiveList();
+            showToast('تم حذف السجل من Realm DB');
+          });
+
+          listEl.appendChild(item);
+        });
+      }
+
+      // -----------------------------------------------------------------------
+      // 13. اختصارات لوحة المفاتيح الشاملة (Ctrl+Z, Ctrl+Y, Ctrl+A, Delete, Arrows, Ctrl+S, Ctrl+P)
+      // -----------------------------------------------------------------------
+      function selectAllSlotsOnPage() {
+        if (state.slots.length === 0) {
+          showToast('الورقة فارغة لا توجد بطاقات لتحديدها');
+          return;
+        }
+        state.selectedSlotIds = state.slots.map(s => s.slotId);
+        state.selectedSlotId = state.slots[0].slotId;
+        renderAllCardSlots();
+        renderSlotsSidebarList();
+        syncInspectorToSelection();
+        showToast(`تم تحديد الكل (${state.selectedSlotIds.length} بطاقة)`);
+      }
+
+      function deleteSelectedSlots() {
+        const idsToDelete = state.selectedSlotIds.length > 0
+          ? state.selectedSlotIds
+          : (state.selectedSlotId ? [state.selectedSlotId] : []);
+        if (idsToDelete.length === 0) return;
+
+        pushUndoSnapshot();
+        state.slots = state.slots.filter(s => !idsToDelete.includes(s.slotId));
+        state.selectedSlotId = state.slots[0] ? state.slots[0].slotId : null;
+        state.selectedSlotIds = state.selectedSlotId ? [state.selectedSlotId] : [];
+        renderAllCardSlots();
+        renderSlotsSidebarList();
+        syncInspectorToSelection();
+        showToast(`تم حذف ${idsToDelete.length} بطاقة من الورقة`);
+      }
+
+      function bindKeyboardShortcuts() {
+        window.addEventListener('keydown', (ev) => {
+          const activeTag = document.activeElement ? document.activeElement.tagName.toLowerCase() : '';
+          const isTypingInput = activeTag === 'input' || activeTag === 'textarea' || activeTag === 'select';
+
+          const keyLower = (ev.key || '').toLowerCase();
+
+          // Ctrl + Z (تراجع)
+          if ((ev.ctrlKey || ev.metaKey) && !ev.shiftKey && keyLower === 'z') {
+            ev.preventDefault();
+            performUndo();
+            return;
+          }
+
+          // Ctrl + Y أو Ctrl + Shift + Z (إعادة)
+          if ((ev.ctrlKey || ev.metaKey) && (keyLower === 'y' || (ev.shiftKey && keyLower === 'z'))) {
+            ev.preventDefault();
+            performRedo();
+            return;
+          }
+
+          // Ctrl + S (حفظ في Realm DB)
+          if ((ev.ctrlKey || ev.metaKey) && keyLower === 's') {
+            ev.preventDefault();
+            saveCurrentSessionToRealm();
+            return;
+          }
+
+          // Ctrl + P (طباعة مباشرة)
+          if ((ev.ctrlKey || ev.metaKey) && keyLower === 'p') {
+            ev.preventDefault();
+            directPrintA4Sheet();
+            return;
+          }
+
+          if (isTypingInput) return;
+
+          // Ctrl + A (تحديد الكل)
+          if ((ev.ctrlKey || ev.metaKey) && keyLower === 'a') {
+            ev.preventDefault();
+            selectAllSlotsOnPage();
+            return;
+          }
+
+          // Delete / Backspace (حذف البطاقات المحددة)
+          if (ev.key === 'Delete' || ev.key === 'Backspace') {
+            ev.preventDefault();
+            deleteSelectedSlots();
+            return;
+          }
+
+          // Escape (إلغاء التحديد أو إغلاق النافذة المنبثقة)
+          if (ev.key === 'Escape') {
+            const modal = document.getElementById('perspectiveModal');
+            if (modal && !modal.classList.contains('hidden')) {
+              modal.classList.add('hidden');
+              return;
+            }
+            state.selectedSlotId = null;
+            state.selectedSlotIds = [];
+            renderAllCardSlots();
+            renderSlotsSidebarList();
+            syncInspectorToSelection();
+            return;
+          }
+
+          // الأسهم لتحريك البطاقات المحددة بدقة مليمترية
+          if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(ev.key)) {
+            const targets = state.slots.filter(s =>
+              state.selectedSlotIds.includes(s.slotId) || s.slotId === state.selectedSlotId
+            );
+            if (targets.length === 0) return;
+            ev.preventDefault();
+            pushUndoSnapshot();
+            const stepMm = ev.shiftKey ? 5.0 : 1.0;
+            targets.forEach(s => {
+              if (ev.key === 'ArrowUp') s.yMm = Number(Math.max(0, s.yMm - stepMm).toFixed(1));
+              if (ev.key === 'ArrowDown') s.yMm = Number(Math.min(A4_HEIGHT_MM - s.heightMm, s.yMm + stepMm).toFixed(1));
+              if (ev.key === 'ArrowLeft') s.xMm = Number(Math.max(0, s.xMm - stepMm).toFixed(1));
+              if (ev.key === 'ArrowRight') s.xMm = Number(Math.min(A4_WIDTH_MM - s.widthMm, s.xMm + stepMm).toFixed(1));
+            });
+            renderAllCardSlots();
+            syncInspectorToSelection();
+          }
+        });
+      }
+
+      // -----------------------------------------------------------------------
+      // 14. ربط جميع الأحداث والأزرار
+      // -----------------------------------------------------------------------
+      function bindAllEvents() {
+        // التبويبات الأربعة في اللوحة الجانبية
+        document.querySelectorAll('.sidebar-tab-btn').forEach(btn => {
+          btn.addEventListener('click', () => switchSidebarTab(btn.dataset.tabTarget));
+        });
+
+        // زر فتح الضبط من الشريط العلوي
+        document.getElementById('btnOpenSettingsTop').addEventListener('click', () => {
+          switchSidebarTab('tabSettings');
+        });
+
+        // أزرار الإضافة والتراجع وتحديد الكل
+        document.getElementById('btnAddNationalId').addEventListener('click', () => addCardPair('national_id'));
+        document.getElementById('btnAddHousingCard').addEventListener('click', () => addCardPair('housing_card'));
+        document.getElementById('btnUndoAction').addEventListener('click', () => performUndo());
+        document.getElementById('btnSelectAllSlots').addEventListener('click', () => selectAllSlotsOnPage());
+
+        // قوالب هوامش وورد (ضيق، متوسط، عادي)
+        document.querySelectorAll('.margin-preset-btn').forEach(btn => {
+          btn.addEventListener('click', () => {
+            applyWordMarginPreset(btn.dataset.marginPreset, true);
+          });
+        });
+
+        // تباعد الوجهين لأقصى طرفي الورقة
+        document.getElementById('chkSpreadMaxSides').addEventListener('change', (ev) => {
+          pushUndoSnapshot();
+          state.spreadMaxSides = ev.target.checked;
+          if (state.slots.length > 0) autoArrangeAllSlots(false);
+        });
+
+        document.getElementById('btnFillFiveNationalIds').addEventListener('click', () => {
+          pushUndoSnapshot();
+          state.slots = [];
+          state.pairCounter = 0;
+          for (let i = 0; i < 5; i++) addCardPair('national_id', false);
+          autoArrangeAllSlots(false);
+          showToast('تم توزيع 5 بطاقات وطنية كاملة (10 أوجه) بأقصى تباعد على طرفي ورقة A4');
+        });
+
+        document.getElementById('btnLoadDemoCards').addEventListener('click', () => loadDemoSamples());
+
+        // تصفير فلتر البطاقة المحددة للوضع الافتراضي (أصلي 100%)
+        document.getElementById('btnResetCardFilters').addEventListener('click', async () => {
+          const slot = state.slots.find(s => s.slotId === state.selectedSlotId);
+          if (!slot) return;
+          pushUndoSnapshot();
+          slot.filterMode = 'original';
+          slot.brightness = 100;
+          slot.contrast = 100;
+          slot.threshold = 128;
+          slot.sharpen = false;
+          syncInspectorToSelection();
+          await reprocessSlotFilters(slot);
+          renderAllCardSlots();
+          showToast('تم تصفير فلتر البطاقة إلى الوضع الأصلي (100%)');
+        });
+
+        document.getElementById('btnApplyGlobalMagic').addEventListener('click', async () => {
+          const currentSlot = state.slots.find(s => s.slotId === state.selectedSlotId);
+          if (!currentSlot) return;
+          pushUndoSnapshot();
+          for (const slot of state.slots) {
+            slot.filterMode = currentSlot.filterMode;
+            slot.brightness = currentSlot.brightness;
+            slot.contrast = currentSlot.contrast;
+            slot.threshold = currentSlot.threshold;
+            slot.sharpen = currentSlot.sharpen;
+            await reprocessSlotFilters(slot);
+          }
+          renderAllCardSlots();
+          showToast('تم تعميم إعدادات الفلتر على جميع البطاقات في الورقة');
+        });
+
+        // قائمة التصدير والطباعة
+        const exportMenu = document.getElementById('exportDropdownMenu');
+        document.getElementById('btnToggleExportMenu').addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          exportMenu.classList.toggle('hidden');
+        });
+        document.addEventListener('click', () => exportMenu.classList.add('hidden'));
+
+        document.getElementById('btnExportPdf').addEventListener('click', () => exportSheetAsPdf());
+        document.getElementById('btnExportPng').addEventListener('click', () => exportSheetAsImage('png'));
+        document.getElementById('btnExportJpg').addEventListener('click', () => exportSheetAsImage('jpg'));
+        document.getElementById('btnExportDocx').addEventListener('click', () => exportSheetAsDocx());
+        document.getElementById('btnDirectPrint').addEventListener('click', () => directPrintA4Sheet());
+
+        // الحفظ في Realm DB
+        document.getElementById('btnQuickSaveRealm').addEventListener('click', () => saveCurrentSessionToRealm());
+
+        // تصفير الورقة
+        document.getElementById('btnClearA4Sheet').addEventListener('click', () => {
+          resetApplicationToFactoryDefaults(true);
+          showToast('تم تصفير الورقة وإعادة جميع الإعدادات للوضع الافتراضي');
+        });
+
+        // إعدادات التخطيط والهامش المخصص
+        document.getElementById('spacerRangeInput').addEventListener('input', (ev) => {
+          state.spacerMm = Number(ev.target.value);
+          document.getElementById('spacerValueText').textContent = `${(state.spacerMm / 10).toFixed(2)} cm (${state.spacerMm} mm)`;
+        });
+
+        document.getElementById('marginRangeInput').addEventListener('input', (ev) => {
+          state.marginPreset = 'custom';
+          state.safeMarginMm = Number(ev.target.value);
+          syncMarginUI();
+          if (state.slots.length > 0 && state.spreadMaxSides) {
+            autoArrangeAllSlots(false);
+          } else {
+            updatePaperGeometry();
+          }
+        });
+
+        document.getElementById('btnAutoArrangeSheet').addEventListener('click', () => autoArrangeAllSlots(true));
+
+        // إعدادات العرض والشبكة
+        document.getElementById('chkShowMmGrid').addEventListener('change', (ev) => {
+          state.showMmGrid = ev.target.checked;
+          updatePaperGeometry();
+        });
+        document.getElementById('chkSmartGuides').addEventListener('change', (ev) => {
+          state.smartGuides = ev.target.checked;
+        });
+        document.getElementById('chkCropMarks').addEventListener('change', (ev) => {
+          state.showCropMarks = ev.target.checked;
+          renderAllCardSlots();
+        });
+        document.getElementById('chkShowSafeMargin').addEventListener('change', (ev) => {
+          state.showSafeMargin = ev.target.checked;
+          updatePaperGeometry();
+        });
+
+        // حفظ وتطبيق الإعدادات الشاملة من تبويب "الضبط الشامل" (الشرط 6)
+        document.getElementById('btnSaveSettingsConfig').addEventListener('click', () => {
+          pushUndoSnapshot();
+          state.officeName = document.getElementById('setOfficeName').value.trim() || DEFAULT_CONFIG.officeName;
+          const chosenPreset = document.getElementById('setDefaultMarginPreset').value;
+          if (WORD_MARGIN_PRESETS[chosenPreset]) {
+            state.marginPreset = chosenPreset;
+            state.safeMarginMm = WORD_MARGIN_PRESETS[chosenPreset].mm;
+          }
+          state.defaultFilterMode = document.getElementById('setDefaultFilterMode').value;
+          state.defaultBrightness = Number(document.getElementById('setDefaultBrightness').value) || 100;
+          state.defaultContrast = Number(document.getElementById('setDefaultContrast').value) || 100;
+          state.exportDpi = Number(document.getElementById('setExportDpi').value) || 300;
+
+          syncMarginUI();
+          if (state.slots.length > 0 && state.spreadMaxSides) {
+            autoArrangeAllSlots(false);
+          } else {
+            updatePaperGeometry();
+          }
+          showToast('تم حفظ وتطبيق إعدادات البرنامج بنجاح');
+        });
+
+        document.getElementById('btnFactoryResetAll').addEventListener('click', () => {
+          resetApplicationToFactoryDefaults(true);
+          showToast('تمت استعادة ضبط المصنع وتصفير جميع الإعدادات والورقة');
+        });
+
+        // الزوم
+        document.getElementById('btnZoomIn').addEventListener('click', () => {
+          zoomFactor = Math.min(1.6, Number((zoomFactor + 0.1).toFixed(2)));
+          updatePaperGeometry();
+        });
+        document.getElementById('btnZoomOut').addEventListener('click', () => {
+          zoomFactor = Math.max(0.55, Number((zoomFactor - 0.1).toFixed(2)));
+          updatePaperGeometry();
+        });
+        document.getElementById('btnZoomReset').addEventListener('click', () => {
+          zoomFactor = 1.0;
+          updatePaperGeometry();
+        });
+
+        // اختيار ملف الصورة
+        document.getElementById('cardImageInput').addEventListener('change', (ev) => {
+          const file = ev.target.files && ev.target.files[0];
+          const slot = state.slots.find(s => s.slotId === state.selectedSlotId);
+          if (file && slot) loadImageFileIntoSlot(file, slot);
+        });
+
+        document.getElementById('btnInspectorUpload').addEventListener('click', () => {
+          if (state.selectedSlotId) triggerFileSelectForSlot(state.selectedSlotId);
+        });
+        document.getElementById('btnInspectorPerspective').addEventListener('click', () => {
+          const slot = state.slots.find(s => s.slotId === state.selectedSlotId);
+          if (slot) openPerspectiveModalForSlot(slot, false);
+        });
+
+        document.getElementById('btnResetStandardSize').addEventListener('click', () => {
+          const slot = state.slots.find(s => s.slotId === state.selectedSlotId);
+          if (!slot) return;
+          pushUndoSnapshot();
+          const spec = CARD_SPECS[slot.cardType] || CARD_SPECS.national_id;
+          slot.widthMm = spec.widthMm;
+          slot.heightMm = spec.heightMm;
+          slot.rotation = 0;
+          renderAllCardSlots();
+          syncInspectorToSelection();
+          showToast('تم إرجاع البطاقة إلى أبعادها القياسية (1:1)');
+        });
+
+        ['inpSlotX', 'inpSlotY', 'inpSlotW', 'inpSlotH'].forEach(id => {
+          document.getElementById(id).addEventListener('input', () => {
+            const slot = state.slots.find(s => s.slotId === state.selectedSlotId);
+            if (!slot) return;
+            slot.xMm = Number(document.getElementById('inpSlotX').value) || 0;
+            slot.yMm = Number(document.getElementById('inpSlotY').value) || 0;
+            slot.widthMm = Math.max(20, Number(document.getElementById('inpSlotW').value) || 86);
+            slot.heightMm = Math.max(15, Number(document.getElementById('inpSlotH').value) || 54);
+            renderAllCardSlots();
+            renderSlotsSidebarList();
+          });
+        });
+
+        document.getElementById('btnRotateLeft90').addEventListener('click', () => {
+          const slot = state.slots.find(s => s.slotId === state.selectedSlotId);
+          if (!slot) return;
+          pushUndoSnapshot();
+          slot.rotation = ((slot.rotation || 0) - 90) % 360;
+          renderAllCardSlots();
+          syncInspectorToSelection();
+        });
+        document.getElementById('btnRotateZero').addEventListener('click', () => {
+          const slot = state.slots.find(s => s.slotId === state.selectedSlotId);
+          if (!slot) return;
+          pushUndoSnapshot();
+          slot.rotation = 0;
+          renderAllCardSlots();
+          syncInspectorToSelection();
+        });
+        document.getElementById('btnRotateRight90').addEventListener('click', () => {
+          const slot = state.slots.find(s => s.slotId === state.selectedSlotId);
+          if (!slot) return;
+          pushUndoSnapshot();
+          slot.rotation = ((slot.rotation || 0) + 90) % 360;
+          renderAllCardSlots();
+          syncInspectorToSelection();
+        });
+        document.getElementById('inpSlotRotation').addEventListener('input', (ev) => {
+          const slot = state.slots.find(s => s.slotId === state.selectedSlotId);
+          if (!slot) return;
+          slot.rotation = Number(ev.target.value) || 0;
+          renderAllCardSlots();
+        });
+
+        document.querySelectorAll('.filter-mode-btn').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const slot = state.slots.find(s => s.slotId === state.selectedSlotId);
+            if (!slot) return;
+            pushUndoSnapshot();
+            slot.filterMode = btn.dataset.filterMode;
+            syncInspectorToSelection();
+            await reprocessSlotFilters(slot);
+            renderAllCardSlots();
+          });
+        });
+
+        ['rngBrightness', 'rngContrast', 'rngThreshold'].forEach(id => {
+          document.getElementById(id).addEventListener('input', async () => {
+            const slot = state.slots.find(s => s.slotId === state.selectedSlotId);
+            if (!slot) return;
+            slot.brightness = Number(document.getElementById('rngBrightness').value);
+            slot.contrast = Number(document.getElementById('rngContrast').value);
+            slot.threshold = Number(document.getElementById('rngThreshold').value);
+            syncInspectorToSelection();
+            await reprocessSlotFilters(slot);
+            renderAllCardSlots();
+          });
+        });
+
+        document.getElementById('chkSharpenText').addEventListener('change', async (ev) => {
+          const slot = state.slots.find(s => s.slotId === state.selectedSlotId);
+          if (!slot) return;
+          slot.sharpen = ev.target.checked;
+          await reprocessSlotFilters(slot);
+          renderAllCardSlots();
+        });
+
+        document.getElementById('btnDeleteSelectedSlot').addEventListener('click', () => {
+          deleteSelectedSlots();
+        });
+
+        // أحداث نافذة القص الذكي وتعديل المنظور
+        document.getElementById('btnClosePerspectiveModal').addEventListener('click', () => {
+          document.getElementById('perspectiveModal').classList.add('hidden');
+        });
+
+        document.getElementById('btnAutoDetectEdges').addEventListener('click', () => {
+          if (!cropModalState.sourceImage) return;
+          cropModalState.corners = detectCardCornersAutomatically(cropModalState.sourceImage);
+          drawPerspectiveSourceCanvas();
+          updatePerspectiveLivePreview();
+          showToast('تم عزل الخلفية وكشف الزوايا الأربع للبطاقة تلقائياً');
+        });
+
+        document.getElementById('btnInsetCorners').addEventListener('click', () => {
+          if (!cropModalState.corners || cropModalState.corners.length !== 4) return;
+          const cx = cropModalState.corners.reduce((acc, p) => acc + p.x, 0) / 4;
+          const cy = cropModalState.corners.reduce((acc, p) => acc + p.y, 0) / 4;
+          cropModalState.corners = cropModalState.corners.map(p => ({
+            x: Math.round(cx + (p.x - cx) * 0.92),
+            y: Math.round(cy + (p.y - cy) * 0.92)
+          }));
+          drawPerspectiveSourceCanvas();
+          updatePerspectiveLivePreview();
+        });
+
+        document.getElementById('btnResetFullFrameCorners').addEventListener('click', () => {
+          const img = cropModalState.sourceImage;
+          if (!img) return;
+          const w = img.naturalWidth || img.width;
+          const h = img.naturalHeight || img.height;
+          cropModalState.corners = [
+            { x: 0, y: 0 },
+            { x: w, y: 0 },
+            { x: w, y: h },
+            { x: 0, y: h }
+          ];
+          drawPerspectiveSourceCanvas();
+          updatePerspectiveLivePreview();
+        });
+
+        document.querySelectorAll('.modal-filter-btn').forEach(btn => {
+          btn.addEventListener('click', () => {
+            cropModalState.filterMode = btn.dataset.modalFilter;
+            syncModalFilterButtons();
+            updatePerspectiveLivePreview();
+          });
+        });
+
+        document.getElementById('btnConfirmPerspectiveCrop').addEventListener('click', () => {
+          const slot = state.slots.find(s => s.slotId === cropModalState.slotId);
+          if (!slot || !cropModalState.sourceImage) return;
+
+          slot.corners = cropModalState.corners.map(c => ({ x: c.x, y: c.y }));
+          slot.filterMode = cropModalState.filterMode;
+
+          const warpedCanvas = warpPerspectiveCard(
+            cropModalState.sourceImage,
+            slot.corners,
+            slot.cardType
+          );
+          slot.warpedImageDataUrl = warpedCanvas.toDataURL('image/jpeg', 0.95);
+          slot.processedImageDataUrl = applyScannerEnhancementToCanvas(warpedCanvas, {
+            filterMode: slot.filterMode,
+            brightness: slot.brightness,
+            contrast: slot.contrast,
+            threshold: slot.threshold,
+            sharpen: slot.sharpen
+          });
+
+          document.getElementById('perspectiveModal').classList.add('hidden');
+          renderAllCardSlots();
+          renderSlotsSidebarList();
+          syncInspectorToSelection();
+          showToast('تم قص البطاقة وتصحيح المنظور بنجاح');
+        });
+      }
+
+      // -----------------------------------------------------------------------
+      // 15. بدء التشغيل على الوضع الافتراضي المصفّر بالكامل (الشرط 5)
+      // -----------------------------------------------------------------------
+      
+      // إدارة وضع تطبيق الأندرويد (.APK) ووضع سطح المكتب للويندوز (.EXE)
+      let isApkMobileMode = true;
+
+      function applyPlatformMode(enableApk, fitPhoneZoom = true) {
+        isApkMobileMode = Boolean(enableApk);
+        document.body.classList.toggle('apk-mobile-mode', isApkMobileMode);
+        document.body.classList.toggle('apk-phone-frame', isApkMobileMode && window.innerWidth > 768);
+
+        const lbl = document.getElementById('platformModeLabel');
+        if (lbl) {
+          lbl.textContent = isApkMobileMode ? 'وضع الويندوز (.EXE)' : 'وضع الأندرويد (.APK)';
+        }
+
+        const engineBadge = document.getElementById('realmEngineText');
+        if (engineBadge) {
+          engineBadge.textContent = isApkMobileMode ? 'Android APK (#F0F4EB)' : 'Windows EXE (#F2E9D8)';
+        }
+
+        // ملاءمة مقاس ورقة الـ A4 تلقائياً لعرض شاشة الهاتف الذكي
+        if (fitPhoneZoom) {
+          const availW = isApkMobileMode ? Math.min(window.innerWidth, 410) - 28 : window.innerWidth;
+          if (isApkMobileMode || window.innerWidth <= 768) {
+            const idealPxPerMm = availW / A4_WIDTH_MM;
+            zoomFactor = Number(Math.max(0.45, Math.min(1.0, idealPxPerMm / basePxPerMm)).toFixed(2));
+          } else {
+            zoomFactor = 1.0;
+          }
+          updatePaperGeometry();
+        }
+      }
+
+      window.addEventListener('DOMContentLoaded', async () => {
+        const btnMode = document.getElementById('btnTogglePlatformMode');
+        if (btnMode) {
+          btnMode.addEventListener('click', () => {
+            applyPlatformMode(!isApkMobileMode, true);
+            showToast(
+              isApkMobileMode
+                ? 'تم التبديل إلى واجهة تطبيق الأندرويد (.APK) بالخلفية #F0F4EB والنص #BDA383'
+                : 'تم التبديل إلى واجهة برنامج الويندوز (.EXE) بالخلفية #F2E9D8 والنص #5B3A62'
+            );
+          });
+        }
+
+        await realmDB.init();
+        initPerspectiveCanvasDragging();
+        bindAllEvents();
+        bindKeyboardShortcuts();
+        // يفتح البرنامج مصفّراً بالكامل: الصفحة فارغة، الفلتر أصلي، السطوع والتباين 100%
+        resetApplicationToFactoryDefaults(false);
+        applyPlatformMode(true, true);
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('platform') === 'android' || window. Capacitor || window.cordova || window.innerWidth <= 540) {
+          applyPlatformMode(true, true);
+        }
+      });
+
+    })();
+  </script>
+</body>
+</html>
