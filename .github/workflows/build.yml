@@ -23,13 +23,13 @@ jobs:
         distribution: 'temurin'
         java-version: '17'
 
-    - name: Initialize and Build APK
+    - name: Build Android Project and APK
       run: |
-        npm init -y
-        npm install @capacitor/cli @capacitor/core @capacitor/android
-        npx cap init Mustamskat com.mustamskat.app --web-dir . --yes
-        npx cap add android
-        npx cap sync android
+        npm install -g @capacitor/cli @capacitor/core
+        mkdir -p android
+        npx @capacitor/cli init Mustamskat com.mustamskat.app --web-dir . --yes
+        npx @capacitor/cli add android
+        npx @capacitor/cli sync android
         cd android
         chmod +x gradlew
         ./gradlew assembleDebug
